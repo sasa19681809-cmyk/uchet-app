@@ -103,8 +103,8 @@
 
     <p class="muted">
       Программа всегда открывается в свёрнутом виде — раскройте нужную панель стрелкой.<br>
-      Перенос между устройствами: сохраните файл кнопкой «Сохранить файл для переноса», положите его в облако,<br>
-      на другом устройстве откройте кнопкой «Открыть файл с диска».
+      Облачное хранение: <strong>GitHub</strong> (приватный репозиторий, файл uchet-backup.json).<br>
+      Любое изменение сохраняется локально и автоматически отправляется на GitHub.
     </p>
 
     <div class="panel">
@@ -128,7 +128,8 @@
       </div>
       <div class="panel-content collapsed">
         <div id="storageWarning" class="storage-warning" style="display:none">
-          Локальное хранилище браузера недоступно. Используйте перенос файлом через облако, чтобы не потерять данные.
+          localStorage в этом режиме недоступен (часто бывает при открытии файла с диска).
+          Это не мешает работе: данные, копии и настройки GitHub хранятся во внутренней базе браузера (IndexedDB) и на GitHub.
         </div>
 
         <div class="action-buttons">
@@ -145,14 +146,42 @@
         </div>
 
         <div class="file-list-box">
+          <div class="file-list-title">GitHub (облачное хранение)</div>
+          <div class="form-grid">
+            <label class="field">Owner (ваш логин)<br><input id="ghOwner" placeholder="my-username"></label>
+            <label class="field">Repository<br><input id="ghRepo" placeholder="uchet-data"></label>
+            <label class="field">Путь к файлу<br><input id="ghPath" placeholder="uchet-backup.json"></label>
+          </div>
+          <div class="form-grid">
+            <label class="field">Token (PAT)<br><input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_..."></label>
+            <label class="field">Автосинхронизация<br>
+              <select id="ghAuto">
+                <option value="1" selected>Включена</option>
+                <option value="0">Выключена</option>
+              </select>
+            </label>
+          </div>
+          <div class="action-buttons">
+            <button id="ghSaveBtn" class="secondary-btn">Сохранить настройки GitHub</button>
+            <button id="ghUploadBtn" class="secondary-btn">Отправить в GitHub</button>
+            <button id="ghDownloadBtn" class="secondary-btn">Загрузить с GitHub (замещение)</button>
+          </div>
+          <div id="ghStatus" class="muted"></div>
+          <p class="muted">
+            Настройки GitHub хранятся во внутренней базе браузера и работают даже при открытии файла с диска.<br>
+            Токен не покидает ваш браузер. Используйте приватный репозиторий и fine-grained токен
+            с правом Contents: Read and write только на этот репозиторий.
+          </p>
+        </div>
+
+        <div class="file-list-box">
           <div class="file-list-title">Локальные копии файлов</div>
           <div id="fileList" class="file-list"></div>
         </div>
 
         <p class="muted">
-          «Сохранить файл для переноса» создаёт файл <strong>uchet-obmen-ДАТА-ВРЕМЯ.json</strong> (на ПК можно сразу сохранить его в папку Яндекс/Google Диска).<br>
-          «Открыть файл с диска» читает выбранный файл и <strong>полностью замещает</strong> текущие данные (на смартфоне в выборе файла доступны Google Диск / Яндекс Диск).<br>
-          Открывайте всегда самый свежий файл по дате и времени в имени.
+          «Сохранить файл для переноса» и «Открыть файл с диска» — ручной обмен файлом через любое облако.<br>
+          GitHub-синхронизация работает автоматически при включённой автосинхронизации.
         </p>
       </div>
     </div>
@@ -270,6 +299,9 @@
     let collapsedTypes = {};
     let editingTypeId = null;
     let autosaveTimer = null;
+    let ghTimer = null;
+
+    let ghSettings = { owner: "", repo: "", path: "uchet-backup.json", token: "", auto: true };
 
     let selectionsByGroup = { "Водоканал": {}, "ТЭК": {} };
 
@@ -298,6 +330,7 @@
     function commit() {
       save();
       scheduleAutoSave();
+      scheduleGithubUpload();
     }
 
     function checkStorage() {
@@ -415,6 +448,214 @@
     function getFileExt(name) {
       const i = String(name || "").lastIndexOf(".");
       return i === -1 ? "" : String(name).slice(i + 1).toLowerCase();
+    }
+
+    function gv(id) {
+      const el = document.getElementById(id);
+      return el ? el.value : "";
+    }
+
+    // ---------- IndexedDB: настройки (работает даже на file://) ----------
+    function idbSettingsOpen() {
+      return new Promise((res, rej) => {
+        const req = indexedDB.open("work-requests-settings", 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore("kv", { keyPath: "key" }); };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+
+    async function idbSettingsGet(key) {
+      try {
+        const db = await idbSettingsOpen();
+        return await new Promise((res, rej) => {
+          const tx = db.transaction("kv", "readonly");
+          const rq = tx.objectStore("kv").get(key);
+          rq.onsuccess = () => res(rq.result ? rq.result.value : null);
+          rq.onerror = () => rej(rq.error);
+        });
+      } catch (e) { return null; }
+    }
+
+    async function idbSettingsPut(key, value) {
+      try {
+        const db = await idbSettingsOpen();
+        await new Promise((res, rej) => {
+          const tx = db.transaction("kv", "readwrite");
+          tx.objectStore("kv").put({ key: key, value: value });
+          tx.oncomplete = () => res();
+          tx.onerror = () => rej(tx.error);
+        });
+      } catch (e) {}
+    }
+
+    // ---------- GitHub ----------
+    function ghConfig() {
+      return ghSettings;
+    }
+
+    function ghReady(cfg) {
+      return !!(cfg && cfg.owner && cfg.repo && cfg.token);
+    }
+
+    function setGhStatus(msg) {
+      const el = document.getElementById("ghStatus");
+      if (el) el.textContent = msg;
+    }
+
+    async function loadGithubSettings() {
+      let s = await idbSettingsGet("gh");
+      if (!s) {
+        try {
+          const raw = localStorage.getItem("ghSettings");
+          if (raw) s = JSON.parse(raw);
+        } catch (e) {}
+      }
+      if (s && typeof s === "object") {
+        ghSettings = Object.assign(
+          { owner: "", repo: "", path: "uchet-backup.json", token: "", auto: true },
+          s
+        );
+      }
+      document.getElementById("ghOwner").value = ghSettings.owner || "";
+      document.getElementById("ghRepo").value = ghSettings.repo || "";
+      document.getElementById("ghPath").value = ghSettings.path || "uchet-backup.json";
+      document.getElementById("ghToken").value = ghSettings.token || "";
+      document.getElementById("ghAuto").value = ghSettings.auto ? "1" : "0";
+    }
+
+    async function saveGithubSettings() {
+      ghSettings = {
+        owner: gv("ghOwner").trim(),
+        repo: gv("ghRepo").trim(),
+        path: gv("ghPath").trim() || "uchet-backup.json",
+        token: gv("ghToken").trim(),
+        auto: gv("ghAuto") === "1"
+      };
+
+      await idbSettingsPut("gh", ghSettings);
+      try { localStorage.setItem("ghSettings", JSON.stringify(ghSettings)); } catch (e) {}
+
+      showToast("Настройки GitHub сохранены.");
+
+      if (ghReady(ghSettings) && !state.types.length && !state.entries.length) {
+        await githubDownload(true);
+      }
+    }
+
+    function b64EncodeUnicode(str) {
+      const bytes = new TextEncoder().encode(str);
+      let bin = "";
+      bytes.forEach(b => { bin += String.fromCharCode(b); });
+      return btoa(bin);
+    }
+
+    function b64DecodeUnicode(b64) {
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    async function ghFetch(cfg, suffix, opts) {
+      const o = opts || {};
+      const headers = Object.assign({
+        "Authorization": "Bearer " + cfg.token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+      }, o.headers || {});
+      return await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/${suffix}`, Object.assign({}, o, { headers }));
+    }
+
+    async function githubUpload(silent) {
+      const cfg = ghConfig();
+      if (!ghReady(cfg)) {
+        if (!silent) showToast("GitHub не настроен: заполните поля и нажмите «Сохранить настройки GitHub».");
+        return false;
+      }
+      try {
+        const content = b64EncodeUnicode(JSON.stringify(buildBackupPayload(), null, 2));
+
+        let sha = undefined;
+        const getRes = await ghFetch(cfg, `contents/${encodeURIComponent(cfg.path)}`);
+        if (getRes.ok) {
+          const g = await getRes.json();
+          sha = g.sha;
+        }
+
+        const body = { message: "uchet sync " + new Date().toISOString(), content };
+        if (sha) body.sha = sha;
+
+        const putRes = await ghFetch(cfg, `contents/${encodeURIComponent(cfg.path)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        if (!putRes.ok) {
+          let msg = "HTTP " + putRes.status;
+          try { const j = await putRes.json(); if (j && j.message) msg = j.message; } catch (e) {}
+          throw new Error(msg);
+        }
+
+        setGhStatus("GitHub: отправлено в " + new Date().toLocaleTimeString());
+        if (!silent) showToast("Данные отправлены на GitHub.");
+        return true;
+      } catch (e) {
+        setGhStatus("GitHub: ошибка отправки (" + (e && e.message ? e.message : e) + ")");
+        if (!silent) showToast("Не удалось отправить на GitHub.");
+        return false;
+      }
+    }
+
+    async function githubDownload(silent) {
+      const cfg = ghConfig();
+      if (!ghReady(cfg)) {
+        if (!silent) showToast("GitHub не настроен: заполните поля и нажмите «Сохранить настройки GitHub».");
+        return false;
+      }
+      try {
+        const res = await ghFetch(cfg, `contents/${encodeURIComponent(cfg.path)}`);
+        if (res.status === 404) {
+          setGhStatus("GitHub: файл ещё не создан (облако пусто).");
+          if (!silent) showToast("На GitHub пока пусто.");
+          return false;
+        }
+        if (!res.ok) {
+          let msg = "HTTP " + res.status;
+          try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (e) {}
+          throw new Error(msg);
+        }
+        const data = await res.json();
+        const text = b64DecodeUnicode(String(data.content || "").replace(/\n/g, ""));
+        const payload = JSON.parse(text);
+        const ok = restoreFromPayload(payload, true);
+        if (!ok) throw new Error("копия пуста");
+        applyDefaultCollapsed();
+        save();
+        renderAll();
+        renderFileList();
+        setGhStatus("GitHub: загружено в " + new Date().toLocaleTimeString());
+        if (!silent) showToast("Данные загружены с GitHub (полное замещение).");
+        return true;
+      } catch (e) {
+        setGhStatus("GitHub: ошибка загрузки (" + (e && e.message ? e.message : e) + ")");
+        if (!silent) showToast("Не удалось загрузить с GitHub.");
+        return false;
+      }
+    }
+
+    function scheduleGithubUpload() {
+      const cfg = ghConfig();
+      if (!cfg.auto || !ghReady(cfg)) return;
+      if (ghTimer) clearTimeout(ghTimer);
+      ghTimer = setTimeout(() => { githubUpload(true); }, 5000);
+    }
+
+    async function initGithubRestore() {
+      const cfg = ghConfig();
+      if (!ghReady(cfg)) return;
+      if (state.types.length || state.entries.length) return;
+      await githubDownload(true);
     }
 
     // ---------- IndexedDB: папка для ручных экспортов ----------
@@ -1216,6 +1457,7 @@
       document.getElementById("toggleEntriesBtn").textContent =
         entriesVisible ? "Скрыть сделанные работы" : "Показать сделанные работы";
       scheduleAutoSave();
+      scheduleGithubUpload();
     }
 
     function renderEntries() {
@@ -1614,10 +1856,12 @@ ${excelSheet("Итог периода", periodRows.join(""))}
     document.getElementById("periodStart").addEventListener("change", function () {
       renderAll();
       scheduleAutoSave();
+      scheduleGithubUpload();
     });
     document.getElementById("periodEnd").addEventListener("change", function () {
       renderAll();
       scheduleAutoSave();
+      scheduleGithubUpload();
     });
 
     document.getElementById("entryDate").addEventListener("change", updateDraftNumbers);
@@ -1627,6 +1871,10 @@ ${excelSheet("Итог периода", periodRows.join(""))}
     document.getElementById("resetChecksBtn").addEventListener("click", resetSelections);
     document.getElementById("saveCheckedBtn").addEventListener("click", saveCheckedWorks);
     document.getElementById("toggleEntriesBtn").addEventListener("click", toggleEntriesVisibility);
+
+    document.getElementById("ghSaveBtn").addEventListener("click", function () { saveGithubSettings(); });
+    document.getElementById("ghUploadBtn").addEventListener("click", function () { githubUpload(false); });
+    document.getElementById("ghDownloadBtn").addEventListener("click", function () { githubDownload(false); });
 
     document.getElementById("openFileBtn").addEventListener("click", function () {
       document.getElementById("openFileInput").click();
@@ -1656,6 +1904,7 @@ ${excelSheet("Итог периода", periodRows.join(""))}
       }
       renderTypeChecklist();
       scheduleAutoSave();
+      scheduleGithubUpload();
     });
 
     document.getElementById("fileList").addEventListener("click", async function (e) {
@@ -1700,6 +1949,7 @@ ${excelSheet("Итог периода", periodRows.join(""))}
       renderTaskHint();
       renderTypeChecklist();
       scheduleAutoSave();
+      scheduleGithubUpload();
     });
 
     document.getElementById("typesList").addEventListener("click", function (e) {
@@ -1787,6 +2037,7 @@ ${excelSheet("Итог периода", periodRows.join(""))}
         collapsedTypes[id] = !(collapsedTypes[id] === true);
         renderTypeChecklist();
         scheduleAutoSave();
+        scheduleGithubUpload();
         return;
       }
 
@@ -1814,7 +2065,10 @@ ${excelSheet("Итог периода", periodRows.join(""))}
     applyDefaultCollapsed();
     renderAll();
     renderFileList();
-    initAutoRestore();
+
+    loadGithubSettings().then(() => {
+      return initAutoRestore().then(() => initGithubRestore());
+    });
   </script>
 
 </body>
