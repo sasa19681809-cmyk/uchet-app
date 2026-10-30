@@ -1,0 +1,2599 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Учёт работ по заявкам</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; width: 100%; overflow-x: hidden; }
+    body { background: #f6f7fb; color: #222; font-family: Arial, sans-serif; }
+    .page { width: 100%; max-width: 1100px; margin: 0 auto; padding: 16px; }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    .muted { color: #666; }
+    .sync-badge { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
+    .sync-ok { background: #f0fdf4; border: 1px solid #16a34a; color: #166534; }
+    .sync-wait { background: #fffbeb; border: 1px solid #b45309; color: #92400e; }
+    .sync-local { background: #eff6ff; border: 1px solid #2563eb; color: #1d4ed8; }
+    .panel { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; user-select: none; }
+    .panel-title { font-size: 18px; font-weight: 700; }
+    .toggle-btn { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 10px; background: #eef2ff; color: #2563eb; font-size: 15px; padding: 0; }
+    .toggle-btn:hover { background: #e0e7ff; opacity: 1; }
+    .panel-content { padding-top: 12px; }
+    .panel-content.collapsed { display: none; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 10px; margin-bottom: 10px; }
+    .field { display: block; min-width: 0; }
+    .field input, .field select { width: 100%; padding: 9px 10px; font-size: 14px; border: 1px solid #bbb; border-radius: 8px; background: #fff; }
+    button { width: 100%; border: 0; border-radius: 8px; background: #2563eb; color: #fff; padding: 10px 12px; font-size: 14px; cursor: pointer; }
+    button:hover { opacity: 0.92; }
+    .panel-content > button { width: auto; min-width: 220px; }
+    .action-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 10px; margin-top: 10px; }
+    .action-buttons button { width: 100%; min-width: 0; }
+    .form-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 10px; margin-top: 10px; }
+    .form-actions button { width: 100%; min-width: 0; }
+    .excel-btn { background: #16a34a; }
+    .danger-btn { background: #dc2626; }
+    .secondary-btn { background: #64748b; }
+    .move-btn { background: #6b7280; padding: 6px 10px; font-size: 13px; width: auto; min-width: 40px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: 10px; margin-top: 12px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 12px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .card.editing { border-color: #2563eb; background: #f8fafc; }
+    .card-title { font-weight: 700; margin-bottom: 6px; }
+    .card-sub { color: #555; font-size: 13px; line-height: 1.35; margin-bottom: 2px; }
+    .card-value { font-size: 22px; font-weight: 700; margin: 4px 0; }
+    .card-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .card-actions button { width: auto; min-width: 0; flex: 0 0 auto; }
+    .card-actions .delete-btn { flex: 1 1 auto; }
+    .delete-btn { background: #dc2626; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+    .badge-vk { background: #dbeafe; color: #1d4ed8; }
+    .badge-tek { background: #ffedd5; color: #c2410c; }
+    .empty { color: #666; padding: 8px 0; }
+    .total-card { margin-top: 12px; border: 1px solid #f0c36d; background: #fff7e6; border-radius: 12px; padding: 12px; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; }
+    .storage-warning { margin-top: 10px; padding: 10px; border: 1px solid #dc2626; background: #fef2f2; color: #b91c1c; border-radius: 8px; font-size: 13px; }
+
+    .group-radio { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; }
+    .radio-line { display: flex; align-items: center; justify-content: flex-start; gap: 10px; border: 1px solid #ddd; background: #fff; border-radius: 10px; padding: 12px 14px; cursor: pointer; font-weight: 700; width: 100%; min-width: 0; }
+    .radio-line input { width: 22px; height: 22px; flex: 0 0 auto; accent-color: #2563eb; cursor: pointer; }
+    .radio-line.active { border-color: #2563eb; background: #eef2ff; color: #1d4ed8; }
+    .group-hint { font-size: 12px; color: #b45309; margin: 2px 0 6px; }
+
+    .cal-tools { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .cal-tools button { width: auto; min-width: 44px; padding: 8px 10px; flex: 0 0 auto; }
+    .cal-month { flex: 1; text-align: center; font-weight: 700; }
+    .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
+    .cal-head { font-size: 11px; color: #666; text-align: center; padding: 4px 0; }
+    .cal-day { padding: 9px 0; text-align: center; border-radius: 8px; border: 1px solid #e2e2e2; background: #fff; color: #111; cursor: pointer; font-size: 13px; }
+    .cal-day.today { color: #dc2626; background: #fff5f5; border-color: #fca5a5; font-weight: 700; }
+    .cal-day.edge.today { background: #dc2626; border-color: #dc2626; color: #fff; }
+    .cal-day.other { opacity: .35; }
+    .cal-day.in-range { background: #eef2ff; border-color: #c7d2fe; }
+    .cal-day.edge { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700; }
+
+    .day-types { display: grid; gap: 8px; margin-top: 10px; }
+    .type-block { border: 1px solid #e2e2e2; background: #fafafa; border-radius: 10px; padding: 8px; min-width: 0; }
+    .type-block-title { font-weight: 700; margin-bottom: 8px; overflow-wrap: anywhere; word-break: break-word; }
+    .type-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: center; }
+    .type-count-head { color: #666; font-size: 12px; font-weight: 700; text-align: center; overflow-wrap: anywhere; word-break: break-word; }
+    .type-count-value { font-size: 20px; font-weight: 700; text-align: center; }
+    .check-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    .check-tools button { width: auto; min-width: 0; flex: 0 0 auto; padding: 8px 12px; font-size: 13px; }
+    .av-big { display: none; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: #1d4ed8; background: #fff; border: 2px solid #2563eb; border-radius: 10px; padding: 6px 16px; flex: 0 0 auto; }
+    .check-list { display: grid; gap: 8px; margin-top: 4px; }
+    .check-card { border: 1px solid #e2e2e2; background: #fafafa; border-radius: 10px; padding: 10px; min-width: 0; }
+    .check-card.locked { opacity: .6; }
+    .check-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+    .check-row.disabled .check-name, .check-row.disabled .check-min, .check-row.disabled .act-num { opacity: .55; }
+    .check-row.collapsed .qty-control, .check-row.collapsed .act-num { display: none; }
+    .check-row:not(.collapsed) .check-summary { display: none; }
+    .collapse-btn { width: 34px; height: 34px; flex: 0 0 auto; padding: 0; font-size: 13px; background: #eef2ff; color: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .check-line { display: flex; align-items: center; gap: 10px; flex: 1 1 220px; min-width: 0; cursor: pointer; }
+    .check-line input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 auto; cursor: pointer; }
+    .check-name { font-weight: 700; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .check-min { color: #666; font-size: 12px; flex: 0 0 auto; }
+    .check-summary { font-size: 12px; color: #1d4ed8; font-weight: 700; flex: 0 0 auto; }
+    .qty-control { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+    .qty-btn { width: 40px; height: 40px; flex: 0 0 auto; padding: 0; font-size: 20px; background: #6b7280; display: flex; align-items: center; justify-content: center; }
+    .qty-control input { width: 70px; flex: 0 0 70px; min-width: 0; text-align: center; padding: 9px 6px; font-size: 14px; border: 1px solid #bbb; border-radius: 8px; background: #fff; color: #111; }
+    .act-num { flex: 1 1 130px; min-width: 110px; padding: 9px 10px; border: 1px dashed #bbb; border-radius: 8px; background: #fff; color: #111; font-weight: 700; overflow-wrap: anywhere; word-break: break-word; }
+    .search-box { margin-top: 12px; }
+    .last-saved { margin-top: 12px; padding: 10px; border: 1px solid #16a34a; background: #f0fdf4; border-radius: 8px; display: none; }
+    .last-saved-title { font-weight: 700; margin-bottom: 6px; }
+    .last-saved-numbers { display: grid; gap: 4px; }
+    .last-saved-line { font-size: 13px; color: #333; }
+    .day-requests { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e5e5e5; }
+    .request-line { font-size: 13px; color: #555; line-height: 1.4; overflow-wrap: anywhere; word-break: break-word; }
+    .file-list-box { margin-top: 12px; }
+    .file-list-title { font-weight: 700; margin-bottom: 8px; }
+    .file-list { display: grid; gap: 8px; }
+    .file-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid #e2e2e2; background: #fafafa; border-radius: 10px; padding: 8px 10px; min-width: 0; }
+    .file-item-name { font-weight: 700; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .file-item-meta { color: #666; font-size: 12px; flex: 0 0 auto; }
+    .file-item-actions { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+    .file-item-actions button { width: auto; min-width: 0; padding: 8px 12px; font-size: 13px; }
+    .order-list { display: grid; gap: 6px; }
+    .order-item { display: flex; align-items: center; gap: 8px; border: 1px solid #e2e2e2; background: #fafafa; border-radius: 10px; padding: 8px 10px; min-width: 0; }
+    .ord-index { color: #666; font-size: 12px; flex: 0 0 auto; }
+    .ord-name { flex: 1 1 auto; font-weight: 600; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .order-item button { width: auto; min-width: 40px; flex: 0 0 auto; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #16a34a; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s ease; z-index: 1000; max-width: 90%; text-align: center; }
+    .toast.show { opacity: 1; visibility: visible; }
+    @media (max-width: 700px) { .panel-content > button { width: 100%; min-width: 0; } }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+
+    <h1>Учёт работ по заявкам</h1>
+
+    <p class="muted">
+      Раскрытые панели, свёрнутые виды и открытые списки запоминаются и восстанавливаются при следующем открытии,<br>
+      а также передаются между устройствами вместе с резервной копией.
+    </p>
+
+    <div id="syncBadge" class="sync-badge sync-local">Данные: локальное устройство</div>
+
+    <div class="panel" id="panelPeriod">
+      <div class="panel-header">
+        <span class="panel-title">Отчётный период</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div class="cal-tools">
+          <button id="calPrevBtn" class="secondary-btn" type="button">←</button>
+          <div id="calMonthLabel" class="cal-month"></div>
+          <button id="calNextBtn" class="secondary-btn" type="button">→</button>
+        </div>
+        <div id="calendar" class="calendar"></div>
+        <div id="periodLabel" class="muted" style="margin-top:10px;"></div>
+        <div class="form-actions">
+          <button id="periodModeBtn" class="secondary-btn" type="button">Отчёт: за всё время</button>
+          <button id="periodClearBtn" class="secondary-btn" type="button">Сбросить период</button>
+        </div>
+        <p class="muted">
+          Первое нажатие на дату — начало периода, второе — конец.<br>
+          Кнопка-триггер переключает отчёт между «всё время» и «выбранный период».
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" id="panelData">
+      <div class="panel-header">
+        <span class="panel-title">Данные</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div id="storageWarning" class="storage-warning" style="display:none">
+          localStorage в этом режиме недоступен. Это не мешает работе: данные, копии и настройки GitHub хранятся во внутренней базе браузера (IndexedDB) и на GitHub.
+        </div>
+
+        <div class="action-buttons">
+          <button id="exportExcelBtn" class="excel-btn">Сохранить всё в Excel</button>
+          <button id="exportFullBtn" class="secondary-btn">Сохранить файл для переноса</button>
+          <button id="openFileBtn" class="secondary-btn">Открыть файл с диска</button>
+          <button id="clearAllBtn" class="danger-btn">Стереть все данные</button>
+          <input
+            type="file"
+            id="openFileInput"
+            style="display:none"
+            accept=".json,.xlsx,.xls,.csv,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+          >
+        </div>
+
+        <div class="file-list-box">
+          <div class="file-list-title">GitHub (облачное хранение)</div>
+          <div class="form-grid">
+            <label class="field">Owner (ваш логин)<br><input id="ghOwner" placeholder="my-username"></label>
+            <label class="field">Repository<br><input id="ghRepo" placeholder="uchet-data"></label>
+            <label class="field">Путь к файлу<br><input id="ghPath" placeholder="uchet-backup.json"></label>
+          </div>
+          <div class="form-grid">
+            <label class="field">Token (PAT)<br><input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_..."></label>
+            <label class="field">Автосинхронизация<br>
+              <select id="ghAuto">
+                <option value="1" selected>Включена</option>
+                <option value="0">Выключена</option>
+              </select>
+            </label>
+          </div>
+          <div class="action-buttons">
+            <button id="ghSaveBtn" class="secondary-btn">Сохранить настройки GitHub</button>
+            <button id="ghUploadBtn" class="secondary-btn">Отправить в GitHub</button>
+            <button id="ghDownloadBtn" class="secondary-btn">Загрузить с GitHub (замещение)</button>
+          </div>
+          <div id="ghStatus" class="muted"></div>
+          <p class="muted">
+            Настройки GitHub хранятся во внутренней базе браузера и работают даже при открытии файла с диска.<br>
+            Токен не покидает ваш браузер. Используйте приватный репозиторий и fine-grained токен
+            с правом Contents: Read and write только на этот репозиторий.
+          </p>
+        </div>
+
+        <div class="file-list-box">
+          <div class="file-list-title">Локальные копии файлов</div>
+          <div id="fileList" class="file-list"></div>
+        </div>
+
+        <p class="muted">
+          «Сохранить файл для переноса» и «Открыть файл с диска» — ручной обмен файлом через любое облако.<br>
+          GitHub-синхронизация работает автоматически при включённой автосинхронизации, в том числе после возвращения интернета.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" id="panelTypes">
+      <div class="panel-header">
+        <span class="panel-title">Виды работ</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div class="form-grid">
+          <label class="field">Название вида работы<br><input id="typeName" placeholder="Например: Диагностика"></label>
+          <label class="field">Время за 1 шт, мин<br><input id="typeMinutes" type="number" min="1" step="1" placeholder="Например: 30"></label>
+        </div>
+        <button id="addTypeBtn">Добавить вид работы</button>
+        <p class="muted">
+          Стрелки ↑↓ в карточках меняют порядок <strong>ввода</strong> (чек-лист).<br>
+          Порядок <strong>в отчётах</strong> настраивается отдельно в блоке ниже.
+        </p>
+        <div id="typesList" class="cards"></div>
+
+        <div class="file-list-box">
+          <div class="file-list-title">Порядок видов в отчёте (свой, независимый от ввода)</div>
+          <div id="reportOrderList" class="order-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panelAdd">
+      <div class="panel-header">
+        <span class="panel-title">Добавить работу</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div class="form-grid">
+          <label class="field">Дата<br><input type="date" id="entryDate"></label>
+          <label class="field">Заявка<br><input type="text" id="entryRequest" placeholder="Например: №123"></label>
+        </div>
+
+        <div class="group-radio" id="groupRadio">
+          <label class="radio-line">
+            <input type="checkbox" name="taskGroup" value="Водоканал">
+            <span>Водоканал</span>
+          </label>
+          <label class="radio-line">
+            <input type="checkbox" name="taskGroup" value="ТЭК">
+            <span>ТЭК</span>
+          </label>
+        </div>
+        <div id="groupHint" class="group-hint"></div>
+
+        <div id="taskHint" class="muted"></div>
+
+        <div class="check-tools">
+          <button id="toggleAllTypesBtn" class="secondary-btn" type="button">Свернуть все</button>
+          <div id="avBigNumber" class="av-big">АВ № —</div>
+          <button id="saveCheckedBtn" type="button">Сохранить работы</button>
+        </div>
+
+        <div id="typeChecklist" class="check-list"></div>
+
+        <div class="form-actions">
+          <button id="resetChecksBtn" class="secondary-btn">Сбросить отметки</button>
+          <button id="toggleEntriesBtn" class="secondary-btn">Показать сделанные работы</button>
+        </div>
+
+        <div id="lastSavedInfo" class="last-saved"></div>
+
+        <div class="search-box">
+          <label class="field">Поиск по номеру заявки<br><input type="text" id="requestSearch" placeholder="Например: 123"></label>
+        </div>
+
+        <div id="entriesList" class="cards"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panelDays">
+      <div class="panel-header">
+        <span class="panel-title" id="daysPanelTitle">Отчёт по дням (за всё время)</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div id="daysList" class="cards"></div>
+        <div id="daysTotal"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panelWeek">
+      <div class="panel-header">
+        <span class="panel-title" id="typesPanelTitle">Количество работ по видам за всё время</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div id="workTypesReportList" class="cards"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panelSummary">
+      <div class="panel-header">
+        <span class="panel-title" id="totalPanelTitle">Итог за всё время</span>
+        <button type="button" class="toggle-btn">▼</button>
+      </div>
+      <div class="panel-content collapsed">
+        <div id="periodTotal"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const STORAGE_KEY = "work-requests-v13";
+    const GROUPS = ["Водоканал", "ТЭК"];
+    const ACT_NUMBER_TYPES = ["АВ", "АП", "AV", "AP"];
+    const ALLOWED_IMPORT_EXT = ["json", "xlsx", "xls", "csv"];
+    const AUTO_SAVE_NAME = "uchet-avtosohranenie.json";
+    const MONTHS_RU = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+
+    const FSA_SAVE_JSON = [{ description: "Резервная копия (JSON)", accept: { "application/json": [".json"] } }];
+    const FSA_SAVE_XLSX = [{ description: "Книга Excel", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }];
+    const FSA_SAVE_XLS = [{ description: "Книга Excel (97-2003)", accept: { "application/vnd.ms-excel": [".xls"] } }];
+
+    let storageOK = true;
+    let state = load() || { types: [], entries: [], reportOrder: [] };
+    if (!Array.isArray(state.reportOrder)) state.reportOrder = [];
+    let currentTaskGroup = null;
+    let entriesVisible = false;
+    let toastTimeout = null;
+    let collapsedTypes = {};
+    let editingTypeId = null;
+    let autosaveTimer = null;
+    let ghTimer = null;
+
+    let periodMode = "all";
+    let periodStartISO = "";
+    let periodEndISO = "";
+    let calViewDate = new Date();
+
+    let ghSettings = { owner: "", repo: "", path: "uchet-backup.json", token: "", auto: true };
+    let syncInfo = { lastLocalSave: null, lastGithubSync: null, pending: false };
+
+    let selectionsByGroup = { "Водоканал": {}, "ТЭК": {} };
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        return {
+          types: Array.isArray(data.types) ? data.types : [],
+          entries: Array.isArray(data.entries) ? data.entries : [],
+          reportOrder: Array.isArray(data.reportOrder) ? data.reportOrder : []
+        };
+      } catch (e) { storageOK = false; return null; }
+    }
+
+    function save() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        storageOK = true;
+      } catch (e) {
+        storageOK = false;
+      }
+      renderStorageWarning();
+    }
+
+    function commit() {
+      save();
+      persistUIState();
+      scheduleAutoSave();
+      const cfg = ghConfig();
+      setSyncInfo({
+        lastLocalSave: Date.now(),
+        pending: ghReady(cfg) ? true : false
+      });
+      scheduleGithubUpload();
+    }
+
+    function checkStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEY + "__probe", "1");
+        localStorage.removeItem(STORAGE_KEY + "__probe");
+        storageOK = true;
+      } catch (e) {
+        storageOK = false;
+      }
+      renderStorageWarning();
+    }
+
+    function renderStorageWarning() {
+      const el = document.getElementById("storageWarning");
+      if (!el) return;
+      el.style.display = storageOK ? "none" : "block";
+    }
+
+    // ---------- Состояние интерфейса (панели, свёрнутые виды, списки) ----------
+    function getUIState() {
+      const panels = {};
+      document.querySelectorAll(".panel").forEach(p => {
+        if (!p.id) return;
+        const content = p.querySelector(".panel-content");
+        panels[p.id] = content ? !content.classList.contains("collapsed") : false;
+      });
+      return {
+        panels: panels,
+        collapsedTypes: Object.assign({}, collapsedTypes),
+        entriesVisible: entriesVisible
+      };
+    }
+
+    function persistUIState() {
+      const ui = getUIState();
+      idbSettingsPut("ui", ui);
+      try { localStorage.setItem("uiState", JSON.stringify(ui)); } catch (e) {}
+    }
+
+    async function loadUIState() {
+      let s = await idbSettingsGet("ui");
+      if (!s) {
+        try {
+          const raw = localStorage.getItem("uiState");
+          if (raw) s = JSON.parse(raw);
+        } catch (e) {}
+      }
+      return (s && typeof s === "object") ? s : null;
+    }
+
+    function applyUIState(ui) {
+      if (!ui || typeof ui !== "object") return false;
+      if (ui.panels && typeof ui.panels === "object") {
+        document.querySelectorAll(".panel").forEach(p => {
+          if (!p.id || !(p.id in ui.panels)) return;
+          const content = p.querySelector(".panel-content");
+          if (!content) return;
+          content.classList.toggle("collapsed", !ui.panels[p.id]);
+        });
+      }
+      if (ui.collapsedTypes && typeof ui.collapsedTypes === "object") {
+        collapsedTypes = ui.collapsedTypes;
+      }
+      if (typeof ui.entriesVisible === "boolean") {
+        entriesVisible = ui.entriesVisible;
+        const btn = document.getElementById("toggleEntriesBtn");
+        if (btn) btn.textContent = entriesVisible ? "Скрыть сделанные работы" : "Показать сделанные работы";
+      }
+      return true;
+    }
+
+    function syncPanelArrows() {
+      document.querySelectorAll(".panel").forEach(panel => {
+        const header = panel.querySelector(".panel-header");
+        const content = panel.querySelector(".panel-content");
+        const btn = header ? header.querySelector(".toggle-btn") : null;
+        if (!header || !content || !btn) return;
+        const collapsed = content.classList.contains("collapsed");
+        btn.textContent = collapsed ? "▼" : "▲";
+        header.setAttribute("aria-expanded", String(!collapsed));
+      });
+    }
+
+    function applyDefaultCollapsed() {
+      collapsedTypes = {};
+      state.types.forEach(t => { collapsedTypes[t.id] = true; });
+      entriesVisible = false;
+      const btn = document.getElementById("toggleEntriesBtn");
+      if (btn) btn.textContent = "Показать сделанные работы";
+    }
+
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+    function escapeHtml(v) {
+      const m = { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" };
+      return String(v ?? "").replace(/[&<>"']/g, c => m[c]);
+    }
+
+    function escapeXml(v) {
+      const m = { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&apos;" };
+      return String(v ?? "").replace(/[&<>"']/g, c => m[c]);
+    }
+
+    function todayISO() { return toISODate(new Date()); }
+
+    function toISODate(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    }
+
+    function pad2(v) { return String(v).padStart(2, "0"); }
+
+    function nowStamp() {
+      const d = new Date();
+      return `${todayISO()}-${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+    }
+
+    function addDays(d, days) { const r = new Date(d); r.setDate(r.getDate()+days); return r; }
+
+    function firstOfMonth(isoOrDate) {
+      if (isoOrDate instanceof Date) return new Date(isoOrDate.getFullYear(), isoOrDate.getMonth(), 1);
+      const [y, m] = String(isoOrDate).split("-").map(Number);
+      return new Date(y, (m || 1) - 1, 1);
+    }
+
+    function formatDateRu(iso) {
+      if (!iso) return "";
+      const [y,m,d] = iso.split("-");
+      return `${d}.${m}.${y}`;
+    }
+
+    function formatDateTime(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      if (isNaN(d)) return "";
+      return `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+
+    function formatBytes(n) {
+      if (!Number.isFinite(n)) return "";
+      const kb = n / 1024;
+      if (kb < 1024) return `${kb.toFixed(1)} КБ`;
+      return `${(kb / 1024).toFixed(1)} МБ`;
+    }
+
+    function formatHours(min) {
+      const t = Math.max(0, Math.round(min || 0));
+      const h = Math.floor(t/60), m = t%60;
+      if (h === 0) return `${m} мин`;
+      if (m === 0) return `${h} ч`;
+      return `${h} ч ${m} мин`;
+    }
+
+    function formatMinutesFirst(min) {
+      const t = Math.max(0, Math.round(min || 0));
+      return `${t} мин (${formatHours(t)})`;
+    }
+
+    function isActNumberType(name) {
+      return ACT_NUMBER_TYPES.includes(String(name || "").trim().toUpperCase());
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => t.classList.remove("show"), 3000);
+    }
+
+    function getFileExt(name) {
+      const i = String(name || "").lastIndexOf(".");
+      return i === -1 ? "" : String(name).slice(i + 1).toLowerCase();
+    }
+
+    function gv(id) {
+      const el = document.getElementById(id);
+      return el ? el.value : "";
+    }
+
+    // ---------- Галочки класса работы ----------
+    function syncGroupChecks() {
+      document.querySelectorAll('input[name="taskGroup"]').forEach(cb => {
+        cb.checked = (cb.value === currentTaskGroup);
+        const label = cb.closest(".radio-line");
+        if (label) label.classList.toggle("active", cb.checked);
+      });
+      const hint = document.getElementById("groupHint");
+      if (hint) {
+        hint.textContent = currentTaskGroup
+          ? ""
+          : "Отметьте класс работы — без этого виды работ недоступны.";
+      }
+    }
+
+    function onGroupCheckChange(value, checked) {
+      if (checked) {
+        if (currentTaskGroup && currentTaskGroup !== value) {
+          captureSelectionsFromDom(currentTaskGroup);
+        }
+        currentTaskGroup = value;
+      } else {
+        if (currentTaskGroup === value) {
+          captureSelectionsFromDom(value);
+          currentTaskGroup = null;
+        }
+      }
+      syncGroupChecks();
+      renderTaskHint();
+      renderTypeChecklist();
+      scheduleAutoSave();
+      scheduleGithubUpload();
+    }
+
+    // ---------- Порядок видов в отчёте ----------
+    function getReportOrderIds() {
+      const existing = new Set(state.types.map(t => t.id));
+      let order = Array.isArray(state.reportOrder) ? state.reportOrder.filter(id => existing.has(id)) : [];
+      state.types.forEach(t => { if (!order.includes(t.id)) order.push(t.id); });
+      return order;
+    }
+
+    function renderReportOrderList() {
+      const list = document.getElementById("reportOrderList");
+      if (!list) return;
+      const order = getReportOrderIds();
+      list.innerHTML = "";
+      if (!order.length) { list.innerHTML = `<div class="empty">Видов работ пока нет.</div>`; return; }
+      order.forEach((id, i) => {
+        const type = state.types.find(t => t.id === id);
+        if (!type) return;
+        const item = document.createElement("div");
+        item.className = "order-item";
+        item.innerHTML = `
+          <span class="ord-index">${i + 1}.</span>
+          <span class="ord-name">${escapeHtml(type.name)}</span>
+          <button type="button" class="move-btn" data-roid="${id}" data-romove="up" ${i === 0 ? "disabled" : ""}>↑</button>
+          <button type="button" class="move-btn" data-roid="${id}" data-romove="down" ${i === order.length - 1 ? "disabled" : ""}>↓</button>`;
+        list.appendChild(item);
+      });
+    }
+
+    // ---------- Период: календарь и режим ----------
+    function getSelectedRange() {
+      let s = periodStartISO, e = periodEndISO;
+      if (!s && !e) return null;
+      if (!s) s = e;
+      if (!e) e = s;
+      if (s > e) { const t = s; s = e; e = t; }
+      return { startISO: s, endISO: e };
+    }
+
+    function getEffectiveRange() {
+      if (periodMode !== "range") return null;
+      return getSelectedRange();
+    }
+
+    function periodSuffix() {
+      return (periodMode === "range" && getSelectedRange()) ? "за период" : "за всё время";
+    }
+
+    function persistPeriod() {
+      idbSettingsPut("period", { mode: periodMode, start: periodStartISO, end: periodEndISO });
+      try { localStorage.setItem("periodSettings", JSON.stringify({ mode: periodMode, start: periodStartISO, end: periodEndISO })); } catch (e) {}
+    }
+
+    async function loadPeriodSettings() {
+      let s = await idbSettingsGet("period");
+      if (!s) {
+        try {
+          const raw = localStorage.getItem("periodSettings");
+          if (raw) s = JSON.parse(raw);
+        } catch (e) {}
+      }
+      if (s && typeof s === "object") {
+        periodMode = s.mode === "range" ? "range" : "all";
+        periodStartISO = typeof s.start === "string" ? s.start : "";
+        periodEndISO = typeof s.end === "string" ? s.end : "";
+      }
+      calViewDate = periodStartISO ? firstOfMonth(periodStartISO) : firstOfMonth(new Date());
+    }
+
+    function renderCalendar() {
+      const cal = document.getElementById("calendar");
+      const label = document.getElementById("calMonthLabel");
+      if (!cal) return;
+
+      label.textContent = `${MONTHS_RU[calViewDate.getMonth()]} ${calViewDate.getFullYear()}`;
+      cal.innerHTML = "";
+
+      ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"].forEach(h => {
+        const d = document.createElement("div");
+        d.className = "cal-head";
+        d.textContent = h;
+        cal.appendChild(d);
+      });
+
+      const first = new Date(calViewDate);
+      const shift = (first.getDay() + 6) % 7;
+      const gridStart = addDays(first, -shift);
+      const range = getSelectedRange();
+      const today = todayISO();
+
+      for (let i = 0; i < 42; i++) {
+        const d = addDays(gridStart, i);
+        const iso = toISODate(d);
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "cal-day";
+        if (d.getMonth() !== calViewDate.getMonth()) cell.classList.add("other");
+        if (iso === today) cell.classList.add("today");
+        if (range) {
+          if (iso === range.startISO || iso === range.endISO) cell.classList.add("edge");
+          else if (iso > range.startISO && iso < range.endISO) cell.classList.add("in-range");
+        }
+        cell.textContent = d.getDate();
+        cell.dataset.date = iso;
+        cal.appendChild(cell);
+      }
+    }
+
+    function renderPeriodUI() {
+      const range = getSelectedRange();
+      const label = document.getElementById("periodLabel");
+      const btn = document.getElementById("periodModeBtn");
+      const daysT = document.getElementById("daysPanelTitle");
+      const typesT = document.getElementById("typesPanelTitle");
+      const totalT = document.getElementById("totalPanelTitle");
+      const suffix = periodSuffix();
+
+      if (label) {
+        if (periodMode === "range" && range) {
+          label.textContent = `Отчёт за период: ${formatDateRu(range.startISO)} — ${formatDateRu(range.endISO)}`;
+        } else if (periodMode === "range") {
+          label.textContent = "Режим периода включён: выберите начало и конец нажатиями в календаре.";
+        } else if (range) {
+          label.textContent = `Период выбран (${formatDateRu(range.startISO)} — ${formatDateRu(range.endISO)}), но отчёт сейчас за всё время. Включите период кнопкой ниже.`;
+        } else {
+          label.textContent = "Отчёт за всё время. Нажмите дату начала и дату конца в календаре, затем включите режим периода.";
+        }
+      }
+
+      if (btn) {
+        btn.textContent = periodMode === "range"
+          ? "Отчёт: за период (нажмите — за всё время)"
+          : "Отчёт: за всё время (нажмите — за период)";
+      }
+
+      if (daysT) daysT.textContent = `Отчёт по дням (${suffix})`;
+      if (typesT) typesT.textContent = `Количество работ по видам ${suffix}`;
+      if (totalT) totalT.textContent = `Итог ${suffix}`;
+    }
+
+    // ---------- Индикатор: где сейчас данные ----------
+    function renderSyncBadge() {
+      const el = document.getElementById("syncBadge");
+      if (!el) return;
+
+      const online = navigator.onLine;
+      const cfg = ghConfig();
+      const configured = ghReady(cfg);
+
+      let cls = "sync-local";
+      let text = "";
+
+      if (!configured) {
+        cls = "sync-local";
+        text = "Данные: локальное устройство · GitHub не настроен";
+      } else if (syncInfo.pending) {
+        cls = "sync-wait";
+        if (online) {
+          text = cfg.auto
+            ? "Данные: локально новее, чем на GitHub · отправка…"
+            : "Данные: локально новее, чем на GitHub · нажмите «Отправить в GitHub»";
+        } else {
+          text = "Данные: локальное устройство (новее GitHub) · нет интернета — отправим автоматически";
+        }
+      } else {
+        cls = "sync-ok";
+        const t = syncInfo.lastGithubSync ? formatDateTime(syncInfo.lastGithubSync) : "";
+        text = "Данные: локально + GitHub, синхронно" + (t ? ` (GitHub: ${t})` : "");
+      }
+
+      text += online ? " · Интернет: есть" : " · Интернет: нет";
+
+      el.className = "sync-badge " + cls;
+      el.textContent = text;
+    }
+
+    async function loadSyncInfo() {
+      const s = await idbSettingsGet("sync");
+      if (s && typeof s === "object") {
+        syncInfo = Object.assign(syncInfo, s);
+      }
+      renderSyncBadge();
+    }
+
+    function setSyncInfo(patch) {
+      Object.assign(syncInfo, patch);
+      idbSettingsPut("sync", syncInfo);
+      renderSyncBadge();
+    }
+
+    // ---------- IndexedDB: настройки ----------
+    function idbSettingsOpen() {
+      return new Promise((res, rej) => {
+        const req = indexedDB.open("work-requests-settings", 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore("kv", { keyPath: "key" }); };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+
+    async function idbSettingsGet(key) {
+      try {
+        const db = await idbSettingsOpen();
+        return await new Promise((res, rej) => {
+          const tx = db.transaction("kv", "readonly");
+          const rq = tx.objectStore("kv").get(key);
+          rq.onsuccess = () => res(rq.result ? rq.result.value : null);
+          rq.onerror = () => rej(rq.error);
+        });
+      } catch (e) { return null; }
+    }
+
+    async function idbSettingsPut(key, value) {
+      try {
+        const db = await idbSettingsOpen();
+        await new Promise((res, rej) => {
+          const tx = db.transaction("kv", "readwrite");
+          tx.objectStore("kv").put({ key: key, value: value });
+          tx.oncomplete = () => res();
+          tx.onerror = () => rej(tx.error);
+        });
+      } catch (e) {}
+    }
+
+    // ---------- GitHub ----------
+    function ghConfig() { return ghSettings; }
+
+    function ghReady(cfg) {
+      return !!(cfg && cfg.owner && cfg.repo && cfg.token);
+    }
+
+    function setGhStatus(msg) {
+      const el = document.getElementById("ghStatus");
+      if (el) el.textContent = msg;
+    }
+
+    async function loadGithubSettings() {
+      let s = await idbSettingsGet("gh");
+      if (!s) {
+        try {
+          const raw = localStorage.getItem("ghSettings");
+          if (raw) s = JSON.parse(raw);
+        } catch (e) {}
+      }
+      if (s && typeof s === "object") {
+        ghSettings = Object.assign(
+          { owner: "", repo: "", path: "uchet-backup.json", token: "", auto: true },
+          s
+        );
+      }
+      document.getElementById("ghOwner").value = ghSettings.owner || "";
+      document.getElementById("ghRepo").value = ghSettings.repo || "";
+      document.getElementById("ghPath").value = ghSettings.path || "uchet-backup.json";
+      document.getElementById("ghToken").value = ghSettings.token || "";
+      document.getElementById("ghAuto").value = ghSettings.auto ? "1" : "0";
+      renderSyncBadge();
+    }
+
+    async function saveGithubSettings() {
+      ghSettings = {
+        owner: gv("ghOwner").trim(),
+        repo: gv("ghRepo").trim(),
+        path: gv("ghPath").trim() || "uchet-backup.json",
+        token: gv("ghToken").trim(),
+        auto: gv("ghAuto") === "1"
+      };
+
+      await idbSettingsPut("gh", ghSettings);
+      try { localStorage.setItem("ghSettings", JSON.stringify(ghSettings)); } catch (e) {}
+
+      showToast("Настройки GitHub сохранены.");
+      renderSyncBadge();
+
+      if (ghReady(ghSettings) && !state.types.length && !state.entries.length) {
+        await githubDownload(true);
+      } else if (ghReady(ghSettings) && ghSettings.auto && navigator.onLine && syncInfo.pending) {
+        await githubUpload(true);
+      }
+    }
+
+    function b64EncodeUnicode(str) {
+      const bytes = new TextEncoder().encode(str);
+      let bin = "";
+      bytes.forEach(b => { bin += String.fromCharCode(b); });
+      return btoa(bin);
+    }
+
+    function b64DecodeUnicode(b64) {
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    async function ghFetch(cfg, suffix, opts) {
+      const o = opts || {};
+      const headers = Object.assign({
+        "Authorization": "Bearer " + cfg.token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+      }, o.headers || {});
+      return await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/${suffix}`, Object.assign({}, o, { headers }));
+    }
+
+    async function githubUpload(silent) {
+      const cfg = ghConfig();
+      if (!ghReady(cfg)) {
+        if (!silent) showToast("GitHub не настроен: заполните поля и нажмите «Сохранить настройки GitHub».");
+        return false;
+      }
+      try {
+        const content = b64EncodeUnicode(JSON.stringify(buildBackupPayload(), null, 2));
+
+        let sha = undefined;
+        const getRes = await ghFetch(cfg, `contents/${encodeURIComponent(cfg.path)}`);
+        if (getRes.ok) {
+          const g = await getRes.json();
+          sha = g.sha;
+        }
+
+        const body = { message: "uchet sync " + new Date().toISOString(), content };
+        if (sha) body.sha = sha;
+
+        const putRes = await ghFetch(cfg, `contents/${encodeURIComponent(cfg.path)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        if (!putRes.ok) {
+          let msg = "HTTP " + putRes.status;
+          try { const j = await putRes.json(); if (j && j.message) msg = j.message; } catch (e) {}
+          throw new Error(msg);
+        }
+
+        setSyncInfo({ pending: false, lastGithubSync: Date.now() });
+        setGhStatus("GitHub: отправлено в " + new Date().toLocaleTimeString());
+        if (!silent) showToast("Данные отправлены на GitHub.");
+        return true;
+      } catch (e) {
+        setSyncInfo({ pending: true });
+        setGhStatus("GitHub: ошибка отправки (" + (e && e.message ? e.message : e) + ")");
+        if (!silent) showToast("Не удалось отправить на GitHub.");
+        return false;
+      }
+    }
+
+    async function githubDownload(silent) {
+      const cfg = ghConfig();
+      if (!ghReady(cfg)) {
+        if (!silent) showToast("GitHub не настроен: заполните поля и нажмите «Сохранить настройки GitHub».");
+        return false;
+      }
+      try {
+        const res = await ghFetch(cfg, `contents/${encodeURIComponent(cfg.path)}`);
+        if (res.status === 404) {
+          setGhStatus("GitHub: файл ещё не создан (облако пусто).");
+          if (!silent) showToast("На GitHub пока пусто.");
+          return false;
+        }
+        if (!res.ok) {
+          let msg = "HTTP " + res.status;
+          try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (e) {}
+          throw new Error(msg);
+        }
+        const data = await res.json();
+        const text = b64DecodeUnicode(String(data.content || "").replace(/\n/g, ""));
+        const payload = JSON.parse(text);
+        const ok = restoreFromPayload(payload, true);
+        if (!ok) throw new Error("копия пуста");
+        save();
+        renderAll();
+        renderFileList();
+        setSyncInfo({ pending: false, lastGithubSync: Date.now() });
+        setGhStatus("GitHub: загружено в " + new Date().toLocaleTimeString());
+        if (!silent) showToast("Данные загружены с GitHub (полное замещение).");
+        return true;
+      } catch (e) {
+        setGhStatus("GitHub: ошибка загрузки (" + (e && e.message ? e.message : e) + ")");
+        if (!silent) showToast("Не удалось загрузить с GitHub.");
+        return false;
+      }
+    }
+
+    function scheduleGithubUpload() {
+      const cfg = ghConfig();
+      if (!cfg.auto || !ghReady(cfg)) return;
+      if (ghTimer) clearTimeout(ghTimer);
+      ghTimer = setTimeout(() => { githubUpload(true); }, 5000);
+    }
+
+    async function initGithubRestore() {
+      const cfg = ghConfig();
+      if (!ghReady(cfg)) return;
+      if (state.types.length || state.entries.length) return;
+      await githubDownload(true);
+    }
+
+    // ---------- IndexedDB: папка для ручных экспортов ----------
+    function idbOpen() {
+      return new Promise((res, rej) => {
+        const req = indexedDB.open("work-requests-fsa", 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore("handles"); };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+
+    async function idbGet(key) {
+      try {
+        const db = await idbOpen();
+        return await new Promise((res, rej) => {
+          const tx = db.transaction("handles", "readonly");
+          const rq = tx.objectStore("handles").get(key);
+          rq.onsuccess = () => res(rq.result || null);
+          rq.onerror = () => rej(rq.error);
+        });
+      } catch (e) { return null; }
+    }
+
+    function idbGetDir() { return idbGet("dir"); }
+
+    async function rememberDirFromFileHandle(fileHandle) {
+      try {
+        const dir = await fileHandle.getParent();
+        if (dir) {
+          const db = await idbOpen();
+          await new Promise((res, rej) => {
+            const tx = db.transaction("handles", "readwrite");
+            tx.objectStore("handles").put(dir, "dir");
+            tx.oncomplete = () => res();
+            tx.onerror = () => rej(tx.error);
+          });
+        }
+      } catch (e) {}
+    }
+
+    async function trySaveBlob(blob, suggestedName, types) {
+      if (!window.showSaveFilePicker) return "fallback";
+      try {
+        const startIn = (await idbGetDir()) || "downloads";
+        const handle = await window.showSaveFilePicker({ startIn, suggestedName, types });
+        const w = await handle.createWritable();
+        await w.write(blob);
+        await w.close();
+        await rememberDirFromFileHandle(handle);
+        return "saved";
+      } catch (err) {
+        if (err && err.name === "AbortError") return "cancelled";
+        return "fallback";
+      }
+    }
+
+    // ---------- IndexedDB: внутренний список файлов ----------
+    function idbFilesOpen() {
+      return new Promise((res, rej) => {
+        const req = indexedDB.open("work-requests-files", 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore("files", { keyPath: "id" }); };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+    }
+
+    async function idbFilesAll() {
+      const db = await idbFilesOpen();
+      return await new Promise((res, rej) => {
+        const tx = db.transaction("files", "readonly");
+        const rq = tx.objectStore("files").getAll();
+        rq.onsuccess = () => res(rq.result || []);
+        rq.onerror = () => rej(rq.error);
+      });
+    }
+
+    async function idbFilesGet(id) {
+      const db = await idbFilesOpen();
+      return await new Promise((res, rej) => {
+        const tx = db.transaction("files", "readonly");
+        const rq = tx.objectStore("files").get(id);
+        rq.onsuccess = () => res(rq.result || null);
+        rq.onerror = () => rej(rq.error);
+      });
+    }
+
+    async function idbFilesPut(rec) {
+      const db = await idbFilesOpen();
+      await new Promise((res, rej) => {
+        const tx = db.transaction("files", "readwrite");
+        tx.objectStore("files").put(rec);
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      });
+    }
+
+    async function idbFilesDelete(id) {
+      const db = await idbFilesOpen();
+      await new Promise((res, rej) => {
+        const tx = db.transaction("files", "readwrite");
+        tx.objectStore("files").delete(id);
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      });
+    }
+
+    async function findFileRecordByName(name) {
+      try {
+        const records = await idbFilesAll();
+        return records.find(r => r.name === name) || null;
+      } catch (e) { return null; }
+    }
+
+    async function renderFileList() {
+      const list = document.getElementById("fileList");
+      let records = [];
+      try { records = await idbFilesAll(); } catch (e) { records = []; }
+
+      records.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+
+      list.innerHTML = "";
+
+      if (!records.length) {
+        list.innerHTML = `<div class="empty">Список пуст. Копии появятся после первого автосохранения или экспорта.</div>`;
+        return;
+      }
+
+      records.forEach(rec => {
+        const item = document.createElement("div");
+        item.className = "file-item";
+        item.innerHTML = `
+          <span class="file-item-name">${escapeHtml(rec.name)}</span>
+          <span class="file-item-meta">${escapeHtml(formatDateTime(rec.addedAt))}${rec.size ? " · " + escapeHtml(formatBytes(rec.size)) : ""}</span>
+          <span class="file-item-actions">
+            <button type="button" data-load-id="${rec.id}">Загрузить</button>
+            <button type="button" class="danger-btn" data-del-id="${rec.id}">Удалить</button>
+          </span>`;
+        list.appendChild(item);
+      });
+    }
+
+    async function addBlobToFileList(blob, name) {
+      const ext = getFileExt(name);
+      if (!ALLOWED_IMPORT_EXT.includes(ext)) return false;
+
+      let records = [];
+      try { records = await idbFilesAll(); } catch (e) {}
+
+      const same = records.find(r => r.name === name);
+
+      const rec = {
+        id: same ? same.id : uid(),
+        name: name,
+        size: blob && Number.isFinite(blob.size) ? blob.size : 0,
+        addedAt: Date.now(),
+        blob: blob
+      };
+
+      try {
+        await idbFilesPut(rec);
+        await renderFileList();
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // ---------- Резервная копия и автосохранение ----------
+    function buildBackupPayload() {
+      return {
+        app: "work-requests",
+        version: 1,
+        savedAt: new Date().toISOString(),
+        settings: {
+          periodMode: periodMode,
+          periodStart: periodStartISO,
+          periodEnd: periodEndISO,
+          currentTaskGroup: currentTaskGroup,
+          ui: getUIState()
+        },
+        types: state.types,
+        entries: state.entries,
+        reportOrder: getReportOrderIds()
+      };
+    }
+
+    function buildBackupBlob() {
+      const blob = new Blob(
+        [JSON.stringify(buildBackupPayload(), null, 2)],
+        { type: "application/json;charset=utf-8" }
+      );
+      return { blob, name: AUTO_SAVE_NAME };
+    }
+
+    async function autoSaveNow() {
+      try {
+        const { blob, name } = buildBackupBlob();
+        await addBlobToFileList(blob, name);
+      } catch (e) {}
+    }
+
+    function scheduleAutoSave() {
+      if (autosaveTimer) clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => { autoSaveNow(); }, 600);
+    }
+
+    function restoreFromPayload(payload, applySettings) {
+      if (!payload || typeof payload !== "object") return false;
+
+      const types = Array.isArray(payload.types) ? normalizeImportedTypes(payload.types) : [];
+      state.types = types;
+
+      const rawEntries = Array.isArray(payload.entries) ? payload.entries : [];
+      state.entries = rawEntries
+        .map(normalizeImportedEntry)
+        .filter(Boolean)
+        .map(e => ({
+          id: uid(),
+          date: e.date,
+          request: e.request,
+          group: e.group,
+          typeName: e.typeName,
+          typeMinutes: getTypeMinutes(e.typeName, e.minutes),
+          qty: e.qty
+        }));
+
+      state.reportOrder = Array.isArray(payload.reportOrder) ? payload.reportOrder : [];
+
+      if (applySettings && payload.settings && typeof payload.settings === "object") {
+        const st = payload.settings;
+        if (st.periodMode === "range" || st.periodMode === "all") periodMode = st.periodMode;
+        if (typeof st.periodStart === "string") periodStartISO = st.periodStart;
+        if (typeof st.periodEnd === "string") periodEndISO = st.periodEnd;
+        if ("currentTaskGroup" in st) {
+          currentTaskGroup = GROUPS.includes(st.currentTaskGroup) ? st.currentTaskGroup : null;
+        }
+        calViewDate = periodStartISO ? firstOfMonth(periodStartISO) : firstOfMonth(new Date());
+        if (st.ui) {
+          applyUIState(st.ui);
+          syncPanelArrows();
+        }
+        renderCalendar();
+        renderPeriodUI();
+      }
+
+      syncGroupChecks();
+      selectionsByGroup = { "Водоканал": {}, "ТЭК": {} };
+      editingTypeId = null;
+
+      return true;
+    }
+
+    async function tryRestoreFromBlob(blob) {
+      try {
+        const payload = await readJsonBlob(blob);
+        if (!payload || typeof payload !== "object") return false;
+
+        const has =
+          (Array.isArray(payload.types) && payload.types.length) ||
+          (Array.isArray(payload.entries) && payload.entries.length);
+
+        if (!has) return false;
+
+        restoreFromPayload(payload, true);
+        save();
+        renderAll();
+        renderFileList();
+        showToast("Данные восстановлены из локальной копии.");
+        return true;
+      } catch (e) { return false; }
+    }
+
+    async function initAutoRestore() {
+      if (state.types.length || state.entries.length) return;
+
+      const rec = await findFileRecordByName(AUTO_SAVE_NAME);
+      if (rec && rec.blob) {
+        await tryRestoreFromBlob(rec.blob);
+      }
+    }
+
+    // ---------- Остальные утилиты ----------
+    function parseNumber(v) {
+      if (v === null || v === undefined || v === "") return NaN;
+      if (typeof v === "number") return v;
+      const s = String(v).replace(/\s/g,"").replace(",", ".");
+      return s ? Number(s) : NaN;
+    }
+
+    function parseInteger(v) {
+      const n = parseNumber(v);
+      return Number.isFinite(n) ? Math.round(n) : NaN;
+    }
+
+    function normalizeGroup(v) {
+      const s = String(v || "").trim().toUpperCase();
+      if (s.includes("ТЭК") || s === "TEK" || s.includes("ТЕК")) return "ТЭК";
+      return "Водоканал";
+    }
+
+    function parseImportDate(v) {
+      if (!v) return null;
+      if (v instanceof Date && !isNaN(v)) return toISODate(v);
+      if (typeof v === "number" && v > 20000) {
+        const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+        if (!isNaN(d)) return toISODate(d);
+      }
+      const s = String(v).trim();
+      let m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+      if (m) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+      m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+      const d = new Date(s);
+      return isNaN(d) ? null : toISODate(d);
+    }
+
+    function normalizeHeader(v) { return String(v||"").toLowerCase().replace(/\s+/g," ").trim(); }
+
+    function findKey(row, patterns) {
+      const keys = Object.keys(row);
+      for (const p of patterns) {
+        const f = keys.find(k => normalizeHeader(k).includes(p));
+        if (f) return f;
+      }
+      return null;
+    }
+
+    function rowToEntry(row) {
+      if (!row || typeof row !== "object") return null;
+      const dateKey = findKey(row, ["дата"]);
+      const groupKey = findKey(row, ["группа"]);
+      const requestKey = findKey(row, ["заявка"]);
+      const typeKey = findKey(row, ["вид работы","вид_работы","название вида","работа"]);
+      const qtyKey = findKey(row, ["количество","кол-во","шт"]);
+      const minutesKey = findKey(row, ["мин за 1 шт","мин/шт","минут за 1","время за 1","норматив"]);
+      if (!dateKey || !typeKey || !qtyKey) return null;
+      const date = parseImportDate(row[dateKey]);
+      const typeName = String(row[typeKey]||"").trim();
+      const qty = parseInteger(row[qtyKey]);
+      if (!date || !typeName || !Number.isFinite(qty) || qty <= 0) return null;
+      const group = normalizeGroup(groupKey ? row[groupKey] : "");
+      const request = String(requestKey ? row[requestKey] : "").trim() || group;
+      const minutes = minutesKey ? parseInteger(row[minutesKey]) : null;
+      return { date, group, request, typeName, qty, minutes: Number.isFinite(minutes)?minutes:null };
+    }
+
+    function normalizeImportedEntry(e) {
+      if (!e || typeof e !== "object") return null;
+      const date = parseImportDate(e.date ?? e.Date ?? e["Дата"] ?? "");
+      const typeName = String(e.typeName ?? e.type ?? e["Вид работы"] ?? "").trim();
+      const qty = parseInteger(e.qty ?? e.quantity ?? e["Количество, шт"] ?? e["Количество"] ?? "");
+      if (!date || !typeName || !Number.isFinite(qty) || qty <= 0) return null;
+      const group = normalizeGroup(e.group ?? e["Группа"] ?? "");
+      const request = String(e.request ?? e["Заявка"] ?? "").trim() || group;
+      const minutes = parseInteger(e.typeMinutes ?? e.minutes ?? e["Мин за 1 шт"] ?? "");
+      return { date, group, request, typeName, qty, minutes: Number.isFinite(minutes)?minutes:null };
+    }
+
+    function normalizeImportedTypes(types) {
+      const res = []; const seen = new Set();
+      types.forEach(raw => {
+        const name = String(raw?.name ?? "").trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        const minutes = parseInteger(raw?.minutes ?? raw?.typeMinutes);
+        res.push({ id: raw?.id || uid(), name, minutes: Number.isFinite(minutes)&&minutes>=0?minutes:0 });
+      });
+      return res;
+    }
+
+    function ensureType(name, minutes) {
+      const n = String(name||"").trim();
+      if (!n) return null;
+      const ex = state.types.find(t => t.name.toLowerCase() === n.toLowerCase());
+      if (ex) return ex;
+      const m = parseInteger(minutes);
+      const t = { id: uid(), name: n, minutes: Number.isFinite(m)&&m>=0?m:0 };
+      state.types.push(t);
+      if (!Array.isArray(state.reportOrder)) state.reportOrder = [];
+      state.reportOrder.push(t.id);
+      return t;
+    }
+
+    function getTypeMinutes(name, fb) {
+      const ex = state.types.find(t => t.name.toLowerCase() === String(name).trim().toLowerCase());
+      if (ex) return ex.minutes;
+      const m = parseInteger(fb);
+      return Number.isFinite(m)&&m>=0?m:0;
+    }
+
+    function readRowState(typeId) {
+      const box = document.querySelector(`#typeChecklist input[data-check-type="${typeId}"]`);
+      const qtyInput = document.querySelector(`#typeChecklist input[data-qty-type="${typeId}"]`);
+      return {
+        checked: box ? box.checked : false,
+        qty: qtyInput ? parseInteger(qtyInput.value) : NaN
+      };
+    }
+
+    function captureSelectionsFromDom(group) {
+      const store = {};
+      state.types.forEach(type => {
+        const row = readRowState(type.id);
+        store[type.id] = {
+          checked: row.checked,
+          qty: Number.isFinite(row.qty) && row.qty > 0 ? row.qty : 1
+        };
+      });
+      selectionsByGroup[group] = store;
+    }
+
+    function getSelection(typeId) {
+      if (!currentTaskGroup) return { checked: false, qty: 1 };
+      const c = selectionsByGroup[currentTaskGroup];
+      if (!c[typeId]) c[typeId] = { checked: false, qty: 1 };
+      return c[typeId];
+    }
+
+    function getSavedPiecesForDateGroupType(date, group, typeName) {
+      if (!date || !typeName || !group) return 0;
+      return state.entries.reduce((sum, e) => {
+        if (e.date === date && e.group === group && e.typeName === typeName) {
+          const q = Number(e.qty) || 0;
+          return q > 0 ? sum + q : sum;
+        }
+        return sum;
+      }, 0);
+    }
+
+    function getDraftNumbersMap() {
+      const date = document.getElementById("entryDate").value;
+      const map = {};
+      if (!date || !currentTaskGroup) return map;
+      state.types.forEach(type => {
+        if (!isActNumberType(type.name)) { map[type.id] = ""; return; }
+        const row = readRowState(type.id);
+        if (row.checked && Number.isFinite(row.qty) && row.qty > 0) {
+          const base = getSavedPiecesForDateGroupType(date, currentTaskGroup, type.name);
+          const start = base + 1, end = base + row.qty;
+          map[type.id] = row.qty === 1 ? `№ ${start}` : `№ ${start}-${end}`;
+        } else {
+          map[type.id] = "";
+        }
+      });
+      return map;
+    }
+
+    function updateDraftNumbers() {
+      const groupActive = !!currentTaskGroup;
+      const map = getDraftNumbersMap();
+
+      document.querySelectorAll("[data-num-for]").forEach(el => {
+        const typeId = el.dataset.numFor;
+        const type = state.types.find(t => t.id === typeId);
+        if (!type || !isActNumberType(type.name)) { el.textContent = "—"; return; }
+        if (!groupActive) { el.textContent = "№ —"; return; }
+        el.textContent = map[typeId] || "№ —";
+      });
+
+      document.querySelectorAll("[data-summary-for]").forEach(el => {
+        const typeId = el.dataset.summaryFor;
+        const type = state.types.find(t => t.id === typeId);
+        const row = readRowState(typeId);
+        let text = "";
+        if (groupActive && row.checked && Number.isFinite(row.qty) && row.qty > 0) {
+          text = `${row.qty} шт`;
+          if (type && isActNumberType(type.name) && map[typeId]) {
+            text += ` · ${map[typeId]}`;
+          }
+        }
+        el.textContent = text;
+      });
+
+      const avEl = document.getElementById("avBigNumber");
+      if (avEl) {
+        const avType = state.types.find(t => String(t.name).trim().toUpperCase() === "АВ");
+        const date = document.getElementById("entryDate").value;
+        if (!avType || !date || !groupActive) {
+          avEl.style.display = "none";
+        } else {
+          const row = readRowState(avType.id);
+          let label = "";
+          if (row.checked && Number.isFinite(row.qty) && row.qty > 0) {
+            label = map[avType.id] || "";
+          }
+          if (!label) {
+            const base = getSavedPiecesForDateGroupType(date, currentTaskGroup, avType.name);
+            label = `№ ${base + 1}`;
+          }
+          avEl.style.display = "flex";
+          avEl.textContent = `АВ ${label}`;
+        }
+      }
+    }
+
+    function buildAllEntryNumbers() {
+      const counters = new Map(); const map = new Map();
+      state.entries.forEach(entry => {
+        if (!isActNumberType(entry.typeName)) { map.set(entry.id, ""); return; }
+        const key = `${entry.date}|${entry.group}|${entry.typeName}`;
+        const qty = Number(entry.qty) || 0;
+        if (qty <= 0) { map.set(entry.id, ""); return; }
+        const next = counters.get(key) || 1;
+        const start = next, end = next + qty - 1;
+        map.set(entry.id, qty === 1 ? `№ ${start}` : `№ ${start}-${end}`);
+        counters.set(key, end + 1);
+      });
+      return map;
+    }
+
+    function setupCollapsibles() {
+      document.querySelectorAll(".panel").forEach(panel => {
+        const header = panel.querySelector(".panel-header");
+        const content = panel.querySelector(".panel-content");
+        const btn = header ? header.querySelector(".toggle-btn") : null;
+        if (!header || !content || !btn) return;
+        header.addEventListener("click", () => {
+          content.classList.toggle("collapsed");
+          syncPanelArrows();
+          persistUIState();
+        });
+      });
+      syncPanelArrows();
+    }
+
+    function moveTypeUp(i) {
+      if (i <= 0) return;
+      const t = state.types[i]; state.types[i] = state.types[i-1]; state.types[i-1] = t;
+      renderAll(); commit();
+    }
+
+    function moveTypeDown(i) {
+      if (i >= state.types.length - 1) return;
+      const t = state.types[i]; state.types[i] = state.types[i+1]; state.types[i+1] = t;
+      renderAll(); commit();
+    }
+
+    function addType() {
+      const n = document.getElementById("typeName");
+      const m = document.getElementById("typeMinutes");
+      const name = n.value.trim();
+      const minutes = Number(m.value);
+      if (!name) { alert("Введите название вида работы."); n.focus(); return; }
+      if (!Number.isFinite(minutes) || minutes <= 0) { alert("Время должно быть больше нуля."); m.focus(); return; }
+      if (state.types.some(t => t.name.trim().toLowerCase() === name.toLowerCase())) { alert("Такой вид работы уже добавлен."); return; }
+      const t = { id: uid(), name, minutes: Math.round(minutes) };
+      state.types.push(t);
+      if (!Array.isArray(state.reportOrder)) state.reportOrder = [];
+      state.reportOrder.push(t.id);
+      n.value = ""; m.value = "";
+      renderAll(); commit(); n.focus();
+    }
+
+    function saveTypeEdit(id) {
+      const nameInput = document.querySelector(`.edit-name[data-edit-id="${id}"]`);
+      const minInput = document.querySelector(`.edit-minutes[data-edit-id="${id}"]`);
+      if (!nameInput || !minInput) return;
+
+      const newName = nameInput.value.trim();
+      const newMinutes = Number(minInput.value);
+
+      if (!newName) { alert("Введите название вида работы."); nameInput.focus(); return; }
+      if (!Number.isFinite(newMinutes) || newMinutes <= 0) { alert("Время должно быть больше нуля."); minInput.focus(); return; }
+
+      const dup = state.types.some(t => t.id !== id && t.name.trim().toLowerCase() === newName.toLowerCase());
+      if (dup) { alert("Такой вид работы уже есть."); nameInput.focus(); return; }
+
+      const type = state.types.find(t => t.id === id);
+      if (!type) return;
+
+      const oldName = type.name;
+      type.name = newName;
+      type.minutes = Math.round(newMinutes);
+
+      if (oldName !== newName) {
+        state.entries.forEach(e => {
+          if (e.typeName === oldName) e.typeName = newName;
+        });
+      }
+
+      editingTypeId = null;
+      renderAll(); commit();
+      showToast("Вид работы обновлён.");
+    }
+
+    function clearAllData() {
+      if (!confirm("Удалить все данные?")) return;
+      if (!confirm("Подтвердите окончательное удаление всех данных без возможности восстановления.")) return;
+      state = { types: [], entries: [], reportOrder: [] };
+      selectionsByGroup = { "Водоканал": {}, "ТЭК": {} };
+      collapsedTypes = {};
+      editingTypeId = null;
+      currentTaskGroup = null;
+      syncGroupChecks();
+      applyDefaultCollapsed();
+      const info = document.getElementById("lastSavedInfo");
+      info.innerHTML = ""; info.style.display = "none";
+      renderAll(); commit();
+      alert("Все данные удалены.");
+    }
+
+    function renderAll() {
+      renderPeriodUI();
+      renderTypes();
+      renderReportOrderList();
+      renderTaskHint();
+      renderTypeChecklist();
+      renderEntries();
+      renderReports();
+    }
+
+    function renderTaskHint() {
+      const el = document.getElementById("taskHint");
+      if (!el) return;
+      el.textContent = currentTaskGroup
+        ? `Выбрана группа: ${currentTaskGroup}. Отметьте виды работ и укажите количество.`
+        : "Класс работы не выбран: отметьте Водоканал или ТЭК, чтобы выбрать виды работ.";
+    }
+
+    function updateToggleAllLabel() {
+      const btn = document.getElementById("toggleAllTypesBtn");
+      if (!btn) return;
+      const anyExpanded = state.types.some(t => collapsedTypes[t.id] !== true);
+      btn.textContent = anyExpanded ? "Свернуть все" : "Развернуть все";
+    }
+
+    function renderTypes() {
+      const list = document.getElementById("typesList");
+      list.innerHTML = "";
+      if (!state.types.length) { list.innerHTML = `<div class="empty">Список пуст. Добавьте виды работ.</div>`; return; }
+
+      state.types.forEach((type, index) => {
+        const first = index === 0, last = index === state.types.length - 1;
+        const card = document.createElement("div");
+
+        if (type.id === editingTypeId) {
+          card.className = "card editing";
+          card.innerHTML = `
+            <div class="form-grid" style="margin-bottom: 8px;">
+              <label class="field">Название вида работы<br>
+                <input class="edit-name" data-edit-id="${type.id}" value="${escapeHtml(type.name)}">
+              </label>
+              <label class="field">Время за 1 шт, мин<br>
+                <input class="edit-minutes" type="number" min="1" step="1" value="${Number(type.minutes)}" data-edit-id="${type.id}">
+              </label>
+            </div>
+            <div class="card-actions">
+              <button type="button" class="edit-save" data-id="${type.id}">Сохранить</button>
+              <button type="button" class="secondary-btn edit-cancel" data-id="${type.id}">Отмена</button>
+            </div>`;
+        } else {
+          card.className = "card";
+          card.innerHTML = `
+            <div class="card-title">${escapeHtml(type.name)}</div>
+            <div class="card-sub">Время за 1 шт: ${Number(type.minutes)} мин</div>
+            <div class="card-actions">
+              <button type="button" class="move-btn move-up" data-index="${index}" ${first?"disabled":""}>↑</button>
+              <button type="button" class="move-btn move-down" data-index="${index}" ${last?"disabled":""}>↓</button>
+              <button type="button" class="secondary-btn edit-type" data-id="${type.id}">Изменить</button>
+              <button type="button" class="delete-btn delete-type" data-id="${type.id}">Удалить</button>
+            </div>`;
+        }
+
+        list.appendChild(card);
+      });
+    }
+
+    function renderTypeChecklist() {
+      const list = document.getElementById("typeChecklist");
+      list.innerHTML = "";
+
+      const groupActive = !!currentTaskGroup;
+
+      const actualIds = new Set(state.types.map(t => t.id));
+      Object.keys(selectionsByGroup).forEach(g => {
+        Object.keys(selectionsByGroup[g]).forEach(id => {
+          if (!actualIds.has(id)) delete selectionsByGroup[g][id];
+        });
+      });
+      Object.keys(collapsedTypes).forEach(id => {
+        if (!actualIds.has(id)) delete collapsedTypes[id];
+      });
+
+      if (!state.types.length) { list.innerHTML = `<div class="empty">Сначала добавьте виды работ.</div>`; updateToggleAllLabel(); return; }
+
+      state.types.forEach(type => {
+        const sel = getSelection(type.id);
+        const qtyValue = sel.qty === "" ? "" : sel.qty;
+        const actType = isActNumberType(type.name);
+        const isCollapsed = collapsedTypes[type.id] === true;
+        const rowDisabled = !groupActive || !sel.checked;
+
+        const card = document.createElement("div");
+        card.className = "check-card" + (groupActive ? "" : " locked");
+        card.innerHTML = `
+          <div class="check-row ${rowDisabled ? "disabled" : ""} ${isCollapsed ? "collapsed" : ""}">
+            <button
+              type="button"
+              class="collapse-btn"
+              data-collapse-type="${type.id}"
+              aria-label="${isCollapsed ? "Развернуть вид работы" : "Свернуть вид работы"}"
+            >
+              ${isCollapsed ? "▼" : "▲"}
+            </button>
+
+            <label class="check-line">
+              <input type="checkbox" data-check-type="${type.id}" ${sel.checked?"checked":""} ${groupActive ? "" : "disabled"}>
+              <span class="check-name">${escapeHtml(type.name)}</span>
+              <span class="check-min">${type.minutes} мин/шт</span>
+            </label>
+
+            <span class="check-summary" data-summary-for="${type.id}"></span>
+
+            <div class="qty-control">
+              <button type="button" class="qty-btn qty-minus" data-qty-type="${type.id}" ${sel.checked && groupActive ? "" : "disabled"} aria-label="Уменьшить">−</button>
+              <input type="number" min="1" step="1" value="${qtyValue}" data-qty-type="${type.id}" ${sel.checked && groupActive ? "" : "disabled"} aria-label="Количество: ${escapeHtml(type.name)}">
+              <button type="button" class="qty-btn qty-plus" data-qty-type="${type.id}" ${sel.checked && groupActive ? "" : "disabled"} aria-label="Увеличить">+</button>
+            </div>
+
+            <div class="act-num" data-num-for="${type.id}" title="Номер акта">${actType ? "№ —" : "—"}</div>
+          </div>`;
+        list.appendChild(card);
+      });
+
+      updateDraftNumbers();
+      updateToggleAllLabel();
+    }
+
+    function resetSelections() {
+      if (currentTaskGroup) selectionsByGroup[currentTaskGroup] = {};
+      renderTypeChecklist();
+    }
+
+    async function saveCheckedWorks() {
+      const dateEl = document.getElementById("entryDate");
+      const requestEl = document.getElementById("entryRequest");
+      const date = dateEl.value;
+      const requestText = requestEl.value.trim();
+
+      if (!date) { alert("Выберите дату."); dateEl.focus(); return; }
+
+      if (!currentTaskGroup) {
+        alert("Сначала отметьте класс работы: Водоканал или ТЭК.");
+        return;
+      }
+
+      const group = currentTaskGroup;
+      const request = requestText || group;
+
+      let savedCount = 0;
+      const newIds = [];
+
+      for (const type of state.types) {
+        const row = readRowState(type.id);
+        if (!row.checked) continue;
+
+        if (!Number.isFinite(row.qty) || row.qty <= 0) {
+          alert("Количество должно быть целым числом больше нуля.");
+          return;
+        }
+
+        const entryId = uid();
+        state.entries.push({
+          id: entryId, date, request, group,
+          typeName: type.name, typeMinutes: type.minutes, qty: row.qty
+        });
+        newIds.push(entryId);
+        savedCount++;
+      }
+
+      if (!savedCount) { alert("Отметьте хотя бы один вид работы."); return; }
+
+      if (periodMode === "range") {
+        if (!periodStartISO || date < periodStartISO) periodStartISO = date;
+        if (!periodEndISO || date > periodEndISO) periodEndISO = date;
+        persistPeriod();
+        renderCalendar();
+      }
+
+      selectionsByGroup = { "Водоканал": {}, "ТЭК": {} };
+      currentTaskGroup = null;
+      syncGroupChecks();
+
+      entriesVisible = true;
+      document.getElementById("toggleEntriesBtn").textContent = "Скрыть сделанные работы";
+
+      renderAll();
+      showSavedNumbers(newIds, savedCount);
+      commit();
+
+      await autoSaveNow();
+    }
+
+    function showSavedNumbers(newIds, savedCount) {
+      const info = document.getElementById("lastSavedInfo");
+      if (!info) return;
+      if (!savedCount) { info.innerHTML = ""; info.style.display = "none"; return; }
+
+      const numbers = buildAllEntryNumbers();
+      const byType = new Map();
+
+      newIds.forEach(id => {
+        const entry = state.entries.find(e => e.id === id);
+        if (!entry || !isActNumberType(entry.typeName)) return;
+        const label = numbers.get(id) || "";
+        if (!label) return;
+        if (!byType.has(entry.typeName)) byType.set(entry.typeName, []);
+        byType.get(entry.typeName).push(label);
+      });
+
+      let html = `<div class="last-saved-title">Сохранено работ: ${savedCount}</div>`;
+
+      if (byType.size) {
+        const ordered = [...byType.keys()].sort((a, b) => {
+          const order = ["АВ", "АП"];
+          const ia = order.indexOf(String(a).trim().toUpperCase());
+          const ib = order.indexOf(String(b).trim().toUpperCase());
+          const xa = ia === -1 ? 9999 : ia;
+          const xb = ib === -1 ? 9999 : ib;
+          return xa - xb || a.localeCompare(b, "ru");
+        });
+        html += `<div class="last-saved-numbers">`;
+        ordered.forEach(t => {
+          html += `<div class="last-saved-line"><strong>${escapeHtml(t)}:</strong> ${escapeHtml(byType.get(t).join(", "))}</div>`;
+        });
+        html += `</div>`;
+      }
+
+      info.innerHTML = html;
+      info.style.display = "block";
+    }
+
+    function toggleEntriesVisibility() {
+      entriesVisible = !entriesVisible;
+      document.getElementById("entriesList").style.display = entriesVisible ? "" : "none";
+      document.getElementById("toggleEntriesBtn").textContent =
+        entriesVisible ? "Скрыть сделанные работы" : "Показать сделанные работы";
+      persistUIState();
+      scheduleAutoSave();
+      scheduleGithubUpload();
+    }
+
+    function renderEntries() {
+      const range = getEffectiveRange();
+      const search = (document.getElementById("requestSearch").value || "").trim().toLowerCase();
+
+      let entries = state.entries;
+      if (range) entries = entries.filter(e => e.date >= range.startISO && e.date <= range.endISO);
+      if (search) entries = entries.filter(e => (e.request||"").toLowerCase().includes(search));
+
+      entries = entries.sort((a,b) =>
+        a.date.localeCompare(b.date)
+        || String(a.group||"").localeCompare(String(b.group||""), "ru")
+        || String(a.typeName||"").localeCompare(String(b.typeName||""), "ru")
+        || String(a.request||"").localeCompare(String(b.request||""), "ru"));
+
+      const list = document.getElementById("entriesList");
+      list.innerHTML = "";
+      list.style.display = entriesVisible ? "" : "none";
+
+      if (!entries.length) {
+        list.innerHTML = `<div class="empty">${search ? "По заданному поиску ничего не найдено." : "Нет работ за выбранный диапазон."}</div>`;
+        return;
+      }
+
+      const numbers = buildAllEntryNumbers();
+
+      entries.forEach(entry => {
+        const minutes = entry.qty * entry.typeMinutes;
+        const gc = entry.group === "ТЭК" ? "badge-tek" : "badge-vk";
+        const label = numbers.get(entry.id) || "";
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="badge ${gc}">${escapeHtml(entry.group||"Без группы")}</div>
+          <div class="card-title">${escapeHtml(entry.typeName)}</div>
+          <div class="card-sub">Дата: ${formatDateRu(entry.date)}</div>
+          <div class="card-sub">Заявка: ${escapeHtml(entry.request)}</div>
+          <div class="card-sub">Количество: ${entry.qty} шт</div>
+          ${label ? `<div class="card-sub">Номер акта: ${escapeHtml(label)}</div>` : ``}
+          <div class="card-sub">Норматив: ${entry.typeMinutes} мин/шт</div>
+          <div class="card-sub">Время: ${formatMinutesFirst(minutes)}</div>
+          <div class="card-actions"><button type="button" class="delete-btn delete-entry" data-id="${entry.id}">Удалить</button></div>`;
+        list.appendChild(card);
+      });
+    }
+
+    function buildReportData(entries) {
+      const byDay = new Map(); const byType = new Map();
+      let totalMinutes = 0;
+      entries.forEach(entry => {
+        const line = entry.qty * entry.typeMinutes;
+        totalMinutes += line;
+        const g = entry.group || "Без группы";
+        let day = byDay.get(entry.date);
+        if (!day) { day = { minutes:0, groups:new Map(), requests:{ "Водоканал":new Set(), "ТЭК":new Set() } }; byDay.set(entry.date, day); }
+        day.minutes += line;
+        if (GROUPS.includes(g)) day.requests[g].add(entry.request || "Без номера");
+        if (!day.groups.has(g)) day.groups.set(g, new Map());
+        const gm = day.groups.get(g);
+        const td = gm.get(entry.typeName) || { pieces: 0 };
+        td.pieces += entry.qty; gm.set(entry.typeName, td);
+        const pt = byType.get(entry.typeName) || { pieces: 0 };
+        pt.pieces += entry.qty; byType.set(entry.typeName, pt);
+      });
+      return { byDay, byType, totalMinutes };
+    }
+
+    function sortTypeEntries(map) {
+      const orderIds = getReportOrderIds();
+      const order = orderIds
+        .map(id => { const t = state.types.find(x => x.id === id); return t ? t.name : null; })
+        .filter(Boolean);
+      return [...map.entries()].sort((a,b) => {
+        const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+        const xa = ia === -1 ? 9999 : ia, xb = ib === -1 ? 9999 : ib;
+        return xa - xb || a[0].localeCompare(b[0], "ru");
+      });
+    }
+
+    function buildDayTypeCounts(day) {
+      const typeMap = new Map();
+      for (const [g, gm] of day.groups.entries()) {
+        for (const [t, td] of gm.entries()) {
+          if (!typeMap.has(t)) { typeMap.set(t, { counts: {} }); GROUPS.forEach(x => typeMap.get(t).counts[x] = 0); }
+          typeMap.get(t).counts[g] = (typeMap.get(t).counts[g] || 0) + td.pieces;
+        }
+      }
+      for (const item of typeMap.values()) GROUPS.forEach(g => { if (!(g in item.counts)) item.counts[g] = 0; });
+      return sortTypeEntries(typeMap);
+    }
+
+    function renderReports() {
+      const range = getEffectiveRange();
+      let entries = state.entries;
+      if (range) entries = entries.filter(e => e.date >= range.startISO && e.date <= range.endISO);
+      const r = buildReportData(entries);
+      renderDaysReport(r.byDay, r.totalMinutes);
+      renderTypesReport(r.byType);
+      renderPeriodTotal(r.totalMinutes);
+    }
+
+    function renderDaysReport(byDay, totalMinutes) {
+      const list = document.getElementById("daysList");
+      const total = document.getElementById("daysTotal");
+      list.innerHTML = ""; total.innerHTML = "";
+      const days = [...byDay.entries()].sort((a,b) => a[0].localeCompare(b[0]));
+      if (!days.length) { list.innerHTML = `<div class="empty">Нет данных за выбранный диапазон.</div>`; return; }
+      days.forEach(([date, day]) => {
+        const counts = buildDayTypeCounts(day);
+        let typesHtml = "";
+        counts.forEach(([typeName, data]) => {
+          typesHtml += `
+            <div class="type-block">
+              <div class="type-block-title">${escapeHtml(typeName)}</div>
+              <div class="type-counts">
+                <div class="type-count-head">ВД</div><div class="type-count-head">ТЭК</div>
+                <div class="type-count-value">${data.counts["Водоканал"]||0}</div>
+                <div class="type-count-value">${data.counts["ТЭК"]||0}</div>
+              </div>
+            </div>`;
+        });
+        const vk = [...day.requests["Водоканал"]].join(", ");
+        const tk = [...day.requests["ТЭК"]].join(", ");
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="card-title">${formatDateRu(date)}</div>
+          <div class="card-value">${day.minutes} мин</div>
+          <div class="card-sub">${formatHours(day.minutes)}</div>
+          <div class="day-types">${typesHtml}</div>
+          <div class="day-requests">
+            <div class="request-line"><strong>ВД:</strong> ${escapeHtml(vk || "—")}</div>
+            <div class="request-line"><strong>ТЭК:</strong> ${escapeHtml(tk || "—")}</div>
+          </div>`;
+        list.appendChild(card);
+      });
+      total.innerHTML = `<div class="total-card">Итого время ${periodSuffix()}: ${formatMinutesFirst(totalMinutes)}</div>`;
+    }
+
+    function renderTypesReport(byType) {
+      const list = document.getElementById("workTypesReportList");
+      list.innerHTML = "";
+      const types = sortTypeEntries(byType);
+      if (!types.length) { list.innerHTML = `<div class="empty">Нет данных за выбранный диапазон.</div>`; return; }
+      types.forEach(([name, data]) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `<div class="card-title">${escapeHtml(name)}</div><div class="card-value">${data.pieces} шт</div>`;
+        list.appendChild(card);
+      });
+    }
+
+    function renderPeriodTotal(totalMinutes) {
+      const el = document.getElementById("periodTotal");
+      if (!totalMinutes) { el.innerHTML = `<div class="empty">Нет данных за выбранный диапазон.</div>`; return; }
+      el.innerHTML = `<div class="total-card">Общее время ${periodSuffix()}: ${formatMinutesFirst(totalMinutes)}</div>`;
+    }
+
+    async function exportExcel() {
+      const range = getEffectiveRange();
+      const periodText = range
+        ? `${formatDateRu(range.startISO)} — ${formatDateRu(range.endISO)}`
+        : "Всё время";
+      let periodEntries = state.entries;
+      if (range) periodEntries = periodEntries.filter(e => e.date >= range.startISO && e.date <= range.endISO);
+      const report = buildReportData(periodEntries);
+      if (typeof XLSX !== "undefined") await exportXlsx(report, periodText);
+      else await exportXmlFallback(report, periodText);
+    }
+
+    async function exportFullBackup() {
+      const payload = buildBackupPayload();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+      const name = "uchet-obmen-" + nowStamp() + ".json";
+
+      const result = await trySaveBlob(blob, name, FSA_SAVE_JSON);
+
+      if (result === "saved" || result === "fallback") {
+        if (result === "fallback") downloadBlob(blob, name);
+        await addBlobToFileList(blob, name);
+        showToast("Файл для переноса сохранён: " + name);
+      }
+    }
+
+    async function exportXlsx(report, periodText) {
+      const wb = XLSX.utils.book_new();
+      const numbers = buildAllEntryNumbers();
+
+      const typesRows = [["Вид работы","Время за 1 шт, мин"]];
+      state.types.forEach(t => typesRows.push([t.name, t.minutes]));
+      const wsTypes = XLSX.utils.aoa_to_sheet(typesRows);
+      wsTypes["!cols"] = [{wch:35},{wch:20}];
+      XLSX.utils.book_append_sheet(wb, wsTypes, "Виды работ");
+
+      const entriesRows = [["Дата","Группа","Заявка","Вид работы","Количество, шт","Номер акта","Мин за 1 шт","Время, мин"]];
+      const all = [...state.entries].sort((a,b)=>a.date.localeCompare(b.date));
+      all.forEach(e => entriesRows.push([formatDateRu(e.date), e.group||"", e.request||"", e.typeName, e.qty, numbers.get(e.id)||"", e.typeMinutes, e.qty*e.typeMinutes]));
+      const wsEntries = XLSX.utils.aoa_to_sheet(entriesRows);
+      wsEntries["!cols"] = [{wch:12},{wch:14},{wch:22},{wch:35},{wch:16},{wch:18},{wch:14},{wch:12}];
+      XLSX.utils.book_append_sheet(wb, wsEntries, "Работы");
+
+      const dailyRows = [["Дата","Вид работы","ВД, шт","ТЭК, шт","Время за день, мин"]];
+      [...report.byDay.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date, day]) => {
+        buildDayTypeCounts(day).forEach(([t, d]) => dailyRows.push([formatDateRu(date), t, d.counts["Водоканал"]||0, d.counts["ТЭК"]||0, day.minutes]));
+      });
+      const wsDaily = XLSX.utils.aoa_to_sheet(dailyRows);
+      wsDaily["!cols"] = [{wch:12},{wch:35},{wch:12},{wch:12},{wch:20}];
+      XLSX.utils.book_append_sheet(wb, wsDaily, "Отчет по дням");
+
+      const periodRows = [["Период", periodText], [], ["Вид работы","Количество, шт"]];
+      sortTypeEntries(report.byType).forEach(([t,d]) => periodRows.push([t, d.pieces]));
+      periodRows.push([], ["Общее время за период, мин", report.totalMinutes], ["Общее время за период", formatMinutesFirst(report.totalMinutes)]);
+      const wsPeriod = XLSX.utils.aoa_to_sheet(periodRows);
+      wsPeriod["!cols"] = [{wch:35},{wch:25}];
+      XLSX.utils.book_append_sheet(wb, wsPeriod, "Итог периода");
+
+      const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const name = "uchet-rabot-" + todayISO() + ".xlsx";
+
+      const result = await trySaveBlob(blob, name, FSA_SAVE_XLSX);
+      if (result === "saved" || result === "fallback") {
+        if (result === "fallback") downloadBlob(blob, name);
+        await addBlobToFileList(blob, name);
+        showToast("Файл Excel сохранён и добавлен в список файлов.");
+      }
+    }
+
+    function xmlCell(v, type="String", style="") {
+      const s = style ? ` ss:StyleID="${style}"` : "";
+      if (type === "Number") return `<Cell${s}><Data ss:Type="Number">${Number.isFinite(Number(v))?Number(v):0}</Data></Cell>`;
+      return `<Cell${s}><Data ss:Type="String">${escapeXml(v)}</Data></Cell>`;
+    }
+    function xmlRow(cells) { return `<Row>${cells.join("")}</Row>`; }
+    function excelSheet(name, rows) { return `<Worksheet ss:Name="${escapeXml(name)}"><Table>${rows}</Table></Worksheet>`; }
+
+    async function exportXmlFallback(report, periodText) {
+      const numbers = buildAllEntryNumbers();
+      const styles = `<Styles><Style ss:ID="header"><Font ss:Bold="1"/></Style></Styles>`;
+
+      const typesRows = [xmlRow([xmlCell("Вид работы","String","header"), xmlCell("Время за 1 шт, мин","String","header")])];
+      state.types.forEach(t => typesRows.push(xmlRow([xmlCell(t.name), xmlCell(t.minutes,"Number")])));
+
+      const entriesRows = [xmlRow([
+        xmlCell("Дата","String","header"), xmlCell("Группа","String","header"), xmlCell("Заявка","String","header"),
+        xmlCell("Вид работы","String","header"), xmlCell("Количество, шт","String","header"), xmlCell("Номер акта","String","header"),
+        xmlCell("Мин за 1 шт","String","header"), xmlCell("Время, мин","String","header")])];
+      [...state.entries].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e => entriesRows.push(xmlRow([
+        xmlCell(formatDateRu(e.date)), xmlCell(e.group||""), xmlCell(e.request||""), xmlCell(e.typeName),
+        xmlCell(e.qty,"Number"), xmlCell(numbers.get(e.id)||""), xmlCell(e.typeMinutes,"Number"), xmlCell(e.qty*e.typeMinutes,"Number")])));
+
+      const dailyRows = [xmlRow([
+        xmlCell("Дата","String","header"), xmlCell("Вид работы","String","header"), xmlCell("ВД, шт","String","header"),
+        xmlCell("ТЭК, шт","String","header"), xmlCell("Время за день, мин","String","header")])];
+      [...report.byDay.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date, day]) => {
+        buildDayTypeCounts(day).forEach(([t,d]) => dailyRows.push(xmlRow([
+          xmlCell(formatDateRu(date)), xmlCell(t), xmlCell(d.counts["Водоканал"]||0,"Number"), xmlCell(d.counts["ТЭК"]||0,"Number"), xmlCell(day.minutes,"Number")])));
+      });
+
+      const periodRows = [
+        xmlRow([xmlCell("Период","String","header"), xmlCell(periodText)]),
+        xmlRow([xmlCell("Вид работы","String","header"), xmlCell("Количество, шт","String","header")])];
+      sortTypeEntries(report.byType).forEach(([t,d]) => periodRows.push(xmlRow([xmlCell(t), xmlCell(d.pieces,"Number")])));
+      periodRows.push(xmlRow([xmlCell("Общее время за период, мин"), xmlCell(report.totalMinutes,"Number")]));
+      periodRows.push(xmlRow([xmlCell("Общее время за период"), xmlCell(formatMinutesFirst(report.totalMinutes))]));
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+${styles}
+${excelSheet("Виды работ", typesRows.join(""))}
+${excelSheet("Работы", entriesRows.join(""))}
+${excelSheet("Отчет по дням", dailyRows.join(""))}
+${excelSheet("Итог периода", periodRows.join(""))}
+</Workbook>`;
+
+      const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+      const name = "uchet-rabot-" + todayISO() + ".xls";
+
+      const result = await trySaveBlob(blob, name, FSA_SAVE_XLS);
+      if (result === "saved" || result === "fallback") {
+        if (result === "fallback") downloadBlob(blob, name);
+        await addBlobToFileList(blob, name);
+        showToast("Файл Excel сохранён и добавлен в список файлов.");
+      }
+    }
+
+    function downloadBlob(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function readJsonBlob(blob) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => {
+          try {
+            const p = JSON.parse(e.target.result);
+            res(Array.isArray(p) ? { entries: p } : p);
+          } catch { rej(new Error("Файл не является корректным JSON.")); }
+        };
+        r.onerror = () => rej(new Error("Не удалось прочитать файл."));
+        r.readAsText(blob, "utf-8");
+      });
+    }
+
+    async function readExcelBlob(blob) {
+      if (typeof XLSX === "undefined") throw new Error("Для чтения Excel нужен интернет. Используйте JSON-копию.");
+      const buf = await blob.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      if (!wb.SheetNames.length) throw new Error("В файле нет листов.");
+      const name = wb.SheetNames.includes("Работы") ? "Работы" : wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { raw: false, defval: "" });
+      return { entries: rows.map(rowToEntry).filter(Boolean) };
+    }
+
+    function applyImport(imported) {
+      const rawTypes = Array.isArray(imported?.types) ? imported.types : [];
+      const rawEntries = Array.isArray(imported?.entries) ? imported.entries : [];
+      const entries = rawEntries.map(normalizeImportedEntry).filter(Boolean);
+
+      if (!entries.length && !rawTypes.length) {
+        alert("Файл не подходит: не найдено распознанных заявок или видов работ.");
+        return;
+      }
+
+      state.entries = [];
+
+      let settingsRestored = false;
+
+      if (rawTypes.length) {
+        state.types = normalizeImportedTypes(rawTypes);
+      }
+
+      state.reportOrder = Array.isArray(imported?.reportOrder) ? imported.reportOrder : [];
+
+      const st = imported?.settings;
+      if (st && typeof st === "object") {
+        if (st.periodMode === "range" || st.periodMode === "all") periodMode = st.periodMode;
+        if (typeof st.periodStart === "string") periodStartISO = st.periodStart;
+        if (typeof st.periodEnd === "string") periodEndISO = st.periodEnd;
+        if ("currentTaskGroup" in st) {
+          currentTaskGroup = GROUPS.includes(st.currentTaskGroup) ? st.currentTaskGroup : null;
+        }
+        settingsRestored = true;
+        calViewDate = periodStartISO ? firstOfMonth(periodStartISO) : firstOfMonth(new Date());
+        if (st.ui) {
+          applyUIState(st.ui);
+          syncPanelArrows();
+        }
+        renderCalendar();
+        renderPeriodUI();
+      }
+
+      syncGroupChecks();
+      selectionsByGroup = { "Водоканал": {}, "ТЭК": {} };
+      collapsedTypes = {};
+      editingTypeId = null;
+      const info = document.getElementById("lastSavedInfo");
+      info.innerHTML = ""; info.style.display = "none";
+
+      if (!entries.length) {
+        renderAll(); commit();
+        showToast("Выполнено полное замещение: загружены виды работ.");
+        return;
+      }
+
+      entries.forEach(e => ensureType(e.typeName, e.minutes));
+      entries.forEach(e => state.entries.push({
+        id: uid(), date: e.date, request: e.request, group: e.group,
+        typeName: e.typeName, typeMinutes: getTypeMinutes(e.typeName, e.minutes), qty: e.qty
+      }));
+
+      entriesVisible = true;
+      document.getElementById("toggleEntriesBtn").textContent = "Скрыть сделанные работы";
+
+      renderAll(); commit();
+      showToast(`Выполнено полное замещение: загружено заявок ${entries.length}.`);
+    }
+
+    async function processImportBlob(blob, fileName) {
+      const ext = getFileExt(fileName);
+
+      if (!ALLOWED_IMPORT_EXT.includes(ext)) {
+        alert("Этот файл не подходит. Можно загрузить только: .json, .xlsx, .xls, .csv.");
+        return;
+      }
+
+      try {
+        const imported = ext === "json"
+          ? await readJsonBlob(blob)
+          : await readExcelBlob(blob);
+        applyImport(imported);
+      } catch (err) {
+        alert("Не удалось прочитать файл. " + (err && err.message ? err.message : ""));
+      }
+    }
+
+    // ---------- Обработчики ----------
+    document.getElementById("addTypeBtn").addEventListener("click", addType);
+
+    document.querySelectorAll('input[name="taskGroup"]').forEach(cb => {
+      cb.addEventListener("change", function () {
+        onGroupCheckChange(this.value, this.checked);
+      });
+    });
+
+    document.getElementById("calPrevBtn").addEventListener("click", function () {
+      calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth() - 1, 1);
+      renderCalendar();
+    });
+
+    document.getElementById("calNextBtn").addEventListener("click", function () {
+      calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth() + 1, 1);
+      renderCalendar();
+    });
+
+    document.getElementById("calendar").addEventListener("click", function (e) {
+      const cell = e.target.closest(".cal-day");
+      if (!cell) return;
+      const iso = cell.dataset.date;
+
+      if (!periodStartISO || (periodStartISO && periodEndISO)) {
+        periodStartISO = iso;
+        periodEndISO = "";
+      } else {
+        if (iso < periodStartISO) {
+          periodEndISO = periodStartISO;
+          periodStartISO = iso;
+        } else {
+          periodEndISO = iso;
+        }
+      }
+
+      persistPeriod();
+      renderCalendar();
+      renderPeriodUI();
+      renderAll();
+      commit();
+    });
+
+    document.getElementById("periodModeBtn").addEventListener("click", function () {
+      periodMode = periodMode === "all" ? "range" : "all";
+
+      if (periodMode === "range" && !periodStartISO) {
+        const today = new Date();
+        periodStartISO = toISODate(new Date(today.getFullYear(), today.getMonth(), 1));
+        periodEndISO = todayISO();
+      }
+
+      if (periodMode === "range" && periodStartISO) {
+        calViewDate = firstOfMonth(periodStartISO);
+      }
+
+      persistPeriod();
+      renderCalendar();
+      renderPeriodUI();
+      renderAll();
+      commit();
+    });
+
+    document.getElementById("periodClearBtn").addEventListener("click", function () {
+      periodStartISO = "";
+      periodEndISO = "";
+      periodMode = "all";
+      calViewDate = firstOfMonth(new Date());
+      persistPeriod();
+      renderCalendar();
+      renderPeriodUI();
+      renderAll();
+      commit();
+    });
+
+    document.getElementById("entryDate").addEventListener("change", updateDraftNumbers);
+    document.getElementById("exportExcelBtn").addEventListener("click", exportExcel);
+    document.getElementById("exportFullBtn").addEventListener("click", exportFullBackup);
+    document.getElementById("clearAllBtn").addEventListener("click", clearAllData);
+    document.getElementById("resetChecksBtn").addEventListener("click", resetSelections);
+    document.getElementById("saveCheckedBtn").addEventListener("click", saveCheckedWorks);
+    document.getElementById("toggleEntriesBtn").addEventListener("click", toggleEntriesVisibility);
+
+    document.getElementById("ghSaveBtn").addEventListener("click", function () { saveGithubSettings(); });
+    document.getElementById("ghUploadBtn").addEventListener("click", function () { githubUpload(false); });
+    document.getElementById("ghDownloadBtn").addEventListener("click", function () { githubDownload(false); });
+
+    document.getElementById("openFileBtn").addEventListener("click", function () {
+      document.getElementById("openFileInput").click();
+    });
+
+    document.getElementById("openFileInput").addEventListener("change", async function () {
+      const f = this.files && this.files[0];
+      this.value = "";
+      if (!f) return;
+
+      const ext = getFileExt(f.name);
+      if (!ALLOWED_IMPORT_EXT.includes(ext)) {
+        alert("Этот файл не подходит. Можно открыть только: .json, .xlsx, .xls, .csv.");
+        return;
+      }
+
+      await addBlobToFileList(f, f.name);
+      await processImportBlob(f, f.name);
+    });
+
+    document.getElementById("toggleAllTypesBtn").addEventListener("click", function () {
+      const anyExpanded = state.types.some(t => collapsedTypes[t.id] !== true);
+      if (anyExpanded) {
+        state.types.forEach(t => { collapsedTypes[t.id] = true; });
+      } else {
+        collapsedTypes = {};
+      }
+      renderTypeChecklist();
+      persistUIState();
+      scheduleAutoSave();
+      scheduleGithubUpload();
+    });
+
+    document.getElementById("reportOrderList").addEventListener("click", function (e) {
+      const btn = e.target.closest("[data-romove]");
+      if (!btn) return;
+      const id = btn.dataset.roid;
+      const dir = btn.dataset.romove;
+      const order = getReportOrderIds();
+      const idx = order.indexOf(id);
+      if (idx === -1) return;
+      const target = dir === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= order.length) return;
+      const t = order[idx]; order[idx] = order[target]; order[target] = t;
+      state.reportOrder = order;
+      renderReportOrderList();
+      renderReports();
+      commit();
+    });
+
+    document.getElementById("fileList").addEventListener("click", async function (e) {
+      const loadBtn = e.target.closest("[data-load-id]");
+      const delBtn = e.target.closest("[data-del-id]");
+
+      if (loadBtn) {
+        const id = loadBtn.dataset.loadId;
+        let rec = null;
+        try { rec = await idbFilesGet(id); } catch (err) {}
+
+        if (!rec || !rec.blob) {
+          alert("Файл не найден в списке.");
+          renderFileList();
+          return;
+        }
+
+        await processImportBlob(rec.blob, rec.name);
+        return;
+      }
+
+      if (delBtn) {
+        if (!confirm("Удалить файл из списка?")) return;
+        try { await idbFilesDelete(delBtn.dataset.delId); } catch (err) {}
+        await renderFileList();
+        showToast("Файл удалён из списка.");
+      }
+    });
+
+    document.getElementById("requestSearch").addEventListener("input", function () {
+      const v = this.value.trim();
+      if (v && !entriesVisible) {
+        entriesVisible = true;
+        document.getElementById("toggleEntriesBtn").textContent = "Скрыть сделанные работы";
+      }
+      renderEntries();
+    });
+
+    document.getElementById("typesList").addEventListener("click", function (e) {
+      const editBtn = e.target.closest(".edit-type");
+      if (editBtn) {
+        editingTypeId = editBtn.dataset.id;
+        renderTypes();
+        const nameInput = document.querySelector(`.edit-name[data-edit-id="${editBtn.dataset.id}"]`);
+        if (nameInput) nameInput.focus();
+        return;
+      }
+
+      const saveBtn = e.target.closest(".edit-save");
+      if (saveBtn) {
+        saveTypeEdit(saveBtn.dataset.id);
+        return;
+      }
+
+      const cancelBtn = e.target.closest(".edit-cancel");
+      if (cancelBtn) {
+        editingTypeId = null;
+        renderTypes();
+        return;
+      }
+
+      const del = e.target.closest(".delete-type");
+      const up = e.target.closest(".move-up");
+      const down = e.target.closest(".move-down");
+      if (del) {
+        if (!confirm("Удалить вид работы из справочника? Уже добавленные работы останутся в отчётах.")) return;
+        state.types = state.types.filter(t => t.id !== del.dataset.id);
+        state.reportOrder = (Array.isArray(state.reportOrder) ? state.reportOrder : []).filter(x => x !== del.dataset.id);
+        if (editingTypeId === del.dataset.id) editingTypeId = null;
+        renderAll(); commit(); return;
+      }
+      if (up) { moveTypeUp(Number(up.dataset.index)); return; }
+      if (down) { moveTypeDown(Number(down.dataset.index)); return; }
+    });
+
+    document.getElementById("typesList").addEventListener("keydown", function (e) {
+      const target = e.target.closest(".edit-name, .edit-minutes");
+      if (!target) return;
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveTypeEdit(target.dataset.editId);
+      }
+
+      if (e.key === "Escape") {
+        editingTypeId = null;
+        renderTypes();
+      }
+    });
+
+    document.getElementById("entriesList").addEventListener("click", function (e) {
+      const btn = e.target.closest(".delete-entry");
+      if (!btn) return;
+      if (!confirm("Удалить эту работу?")) return;
+      state.entries = state.entries.filter(x => x.id !== btn.dataset.id);
+      renderAll(); commit();
+    });
+
+    document.getElementById("typeChecklist").addEventListener("change", function (e) {
+      const box = e.target.closest("input[data-check-type]");
+      if (box) {
+        if (!currentTaskGroup) { box.checked = false; return; }
+        const typeId = box.dataset.checkType;
+        const sel = getSelection(typeId);
+        sel.checked = box.checked;
+        renderTypeChecklist();
+      }
+    });
+
+    document.getElementById("typeChecklist").addEventListener("input", function (e) {
+      const q = e.target.closest("input[data-qty-type]");
+      if (q) {
+        if (!currentTaskGroup) return;
+        const sel = getSelection(q.dataset.qtyType);
+        sel.qty = q.value;
+        updateDraftNumbers();
+      }
+    });
+
+    document.getElementById("typeChecklist").addEventListener("click", function (e) {
+      const collapseBtn = e.target.closest(".collapse-btn");
+      if (collapseBtn) {
+        const id = collapseBtn.dataset.collapseType;
+        collapsedTypes[id] = !(collapsedTypes[id] === true);
+        renderTypeChecklist();
+        persistUIState();
+        scheduleAutoSave();
+        scheduleGithubUpload();
+        return;
+      }
+
+      const minus = e.target.closest(".qty-minus");
+      const plus = e.target.closest(".qty-plus");
+      if (!minus && !plus) return;
+      if (!currentTaskGroup) return;
+
+      const typeId = (minus || plus).dataset.qtyType;
+      const input = document.querySelector(`#typeChecklist input[data-qty-type="${typeId}"]`);
+      if (!input) return;
+
+      let qty = parseInteger(input.value);
+      if (!Number.isFinite(qty) || qty < 1) qty = 1;
+      qty = minus ? Math.max(1, qty - 1) : qty + 1;
+
+      input.value = qty;
+      getSelection(typeId).qty = qty;
+      updateDraftNumbers();
+    });
+
+    // ---------- Реакция на появление/пропадание интернета ----------
+    window.addEventListener("online", function () {
+      renderSyncBadge();
+      const cfg = ghConfig();
+      if (cfg.auto && ghReady(cfg) && syncInfo.pending) {
+        githubUpload(true);
+      }
+    });
+
+    window.addEventListener("offline", function () {
+      renderSyncBadge();
+      setGhStatus("Нет интернета: изменения сохраняются локально, отправим автоматически после подключения.");
+    });
+
+    setInterval(function () {
+      const cfg = ghConfig();
+      if (navigator.onLine && cfg.auto && ghReady(cfg) && syncInfo.pending) {
+        githubUpload(true);
+      } else {
+        renderSyncBadge();
+      }
+    }, 60000);
+
+    // ---------- Старт ----------
+    checkStorage();
+    setupCollapsibles();
+    document.getElementById("entryDate").value = todayISO();
+    syncGroupChecks();
+    applyDefaultCollapsed();
+    renderCalendar();
+    renderPeriodUI();
+    renderAll();
+    renderFileList();
+    renderSyncBadge();
+
+    loadGithubSettings()
+      .then(() => loadSyncInfo())
+      .then(() => loadPeriodSettings())
+      .then(() => loadUIState())
+      .then((ui) => {
+        if (ui) {
+          applyUIState(ui);
+          syncPanelArrows();
+        }
+        renderCalendar();
+        renderPeriodUI();
+        renderAll();
+        return initAutoRestore();
+      })
+      .then(() => initGithubRestore())
+      .then(() => {
+        renderCalendar();
+        renderPeriodUI();
+        renderAll();
+        const cfg = ghConfig();
+        if (navigator.onLine && cfg.auto && ghReady(cfg) && syncInfo.pending) {
+          githubUpload(true);
+        }
+        renderSyncBadge();
+      });
+  </script>
+
+</body>
+</html>
